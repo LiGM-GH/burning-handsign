@@ -1,59 +1,32 @@
-use std::{convert::Infallible, marker::PhantomData};
+use anyhow::Result;
+use tch::{nn, nn::Module, nn::OptimizerConfig, Device};
 
-use burn::{
-    backend::Wgpu,
-    nn::{
-        conv::{Conv2d, Conv2dConfig}, pool::{AdaptiveAvgPool2d, AdaptiveAvgPool2dConfig}, Dropout, DropoutConfig, Linear, LinearConfig, Relu
-    },
-    prelude::*,
-    record::{FullPrecisionSettings, PrettyJsonFileRecorder},
-};
+const IMAGE_DIM: i64 = 784;
+const HIDDEN_NODES: i64 = 128;
+const LABELS: i64 = 10;
 
-#[derive(Module, Debug)]
-pub struct Model<B: Backend> {
-    conv1: Conv2d<B>,
-    conv2: Conv2d<B>,
-    pool: AdaptiveAvgPool2d,
-    dropout: Dropout,
-    linear1: Linear<B>,
-    linear2: Linear<B>,
-    activation: Relu,
+fn net(vs: &nn::Path) -> impl Module + use<> {
+    nn::seq()
+        .add(nn::linear(vs / "layer1", IMAGE_DIM, HIDDEN_NODES, Default::default()))
+        .add_fn(|xs| xs.relu())
+        .add(nn::linear(vs, HIDDEN_NODES, LABELS, Default::default()))
 }
 
-#[derive(Config, Debug)]
-pub struct ModelConfig {
-    num_classes: usize,
-    hidden_size: usize,
-    #[config(default = "0.5")]
-    dropout: f64,
-}
-
-impl ModelConfig {
-    /// Returns the initialized model.
-    pub fn init<B: Backend>(&self, device: &B::Device) -> Model<B> {
-        Model {
-            conv1: Conv2dConfig::new([1, 8], [3, 3]).init(device),
-            conv2: Conv2dConfig::new([8, 16], [3, 3]).init(device),
-            pool: AdaptiveAvgPool2dConfig::new([8, 8]).init(),
-            activation: Relu::new(),
-            linear1: LinearConfig::new(16 * 8 * 8, self.hidden_size)
-                .init(device),
-            linear2: LinearConfig::new(self.hidden_size, self.num_classes)
-                .init(device),
-            dropout: DropoutConfig::new(self.dropout).init(),
-        }
+pub fn main() -> Result<()> {
+    let m = tch::vision::mnist::load_dir("data")?;
+    let vs = nn::VarStore::new(Device::Cpu);
+    let net = net(&vs.root());
+    let mut opt = nn::Adam::default().build(&vs, 1e-3)?;
+    for epoch in 1..500 {
+        let loss = net.forward(&m.train_images).cross_entropy_for_logits(&m.train_labels);
+        opt.backward_step(&loss);
+        let test_accuracy = net.forward(&m.test_images).accuracy_for_logits(&m.test_labels);
+        println!(
+            "epoch: {:4} train loss: {:8.5} test acc: {:5.2}%",
+            epoch,
+            f64::try_from(&loss)?,
+            100. * f64::try_from(&test_accuracy)?,
+        );
     }
-}
-
-fn main() {
-    type MyBackend = Wgpu<f32, i32>;
-
-    let device = Default::default();
-    let model = ModelConfig::new(10, 512).init::<MyBackend>(&device);
-
-    println!("{}", model);
-    model.save_file(
-        "models/model_conv2x2.json",
-        &PrettyJsonFileRecorder::<FullPrecisionSettings>::new(),
-    ).unwrap();
+    Ok(())
 }

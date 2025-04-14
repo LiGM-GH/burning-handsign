@@ -4,6 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-burn = { version = "0.16.0", features = ["wgpu", "train", "vision"] }
+anyhow = "1.0.98"
 bincode = "=2.0.0-rc.3"
 bincode_derive = "=2.0.0-rc.3"
+tch = { version = "0.19.0", features = ["download-libtorch"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
