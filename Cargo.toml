@@ -7,3 +7,4 @@ edition = "2024"
 burn = { version = "0.16.0", features = ["wgpu", "train", "vision"] }
 bincode = "=2.0.0-rc.3"
 bincode_derive = "=2.0.0-rc.3"
+tap = "1.0.1"

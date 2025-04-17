@@ -1,46 +1,31 @@
-use std::{convert::Infallible, marker::PhantomData};
+use std::{collections::HashSet, ops::ControlFlow};
 
 use burn::{
     backend::Wgpu,
-    nn::{
-        conv::{Conv2d, Conv2dConfig}, pool::{AdaptiveAvgPool2d, AdaptiveAvgPool2dConfig}, Dropout, DropoutConfig, Linear, LinearConfig, Relu
+    data::dataset::{
+        Dataset,
+        vision::{Annotation, ImageFolderDataset},
     },
-    prelude::*,
-    record::{FullPrecisionSettings, PrettyJsonFileRecorder},
+    tensor::{Float, Shape, Tensor, TensorData},
 };
 
-#[derive(Module, Debug)]
-pub struct Model<B: Backend> {
-    conv1: Conv2d<B>,
-    conv2: Conv2d<B>,
-    pool: AdaptiveAvgPool2d,
-    dropout: Dropout,
-    linear1: Linear<B>,
-    linear2: Linear<B>,
-    activation: Relu,
+use dataset::HandsignDataset;
+use model::ModelConfig;
+
+mod dataset;
+mod model;
+
+trait IntoDebug {
+    fn into_debug(&self) -> &dyn std::fmt::Debug;
 }
 
-#[derive(Config, Debug)]
-pub struct ModelConfig {
-    num_classes: usize,
-    hidden_size: usize,
-    #[config(default = "0.5")]
-    dropout: f64,
-}
-
-impl ModelConfig {
-    /// Returns the initialized model.
-    pub fn init<B: Backend>(&self, device: &B::Device) -> Model<B> {
-        Model {
-            conv1: Conv2dConfig::new([1, 8], [3, 3]).init(device),
-            conv2: Conv2dConfig::new([8, 16], [3, 3]).init(device),
-            pool: AdaptiveAvgPool2dConfig::new([8, 8]).init(),
-            activation: Relu::new(),
-            linear1: LinearConfig::new(16 * 8 * 8, self.hidden_size)
-                .init(device),
-            linear2: LinearConfig::new(self.hidden_size, self.num_classes)
-                .init(device),
-            dropout: DropoutConfig::new(self.dropout).init(),
+impl IntoDebug for Annotation {
+    fn into_debug(&self) -> &dyn std::fmt::Debug {
+        match self {
+            Self::Label(label) => label,
+            Self::MultiLabel(labels) => labels,
+            Self::BoundingBoxes(vals) => vals,
+            Self::SegmentationMask(mask) => mask,
         }
     }
 }
@@ -52,8 +37,23 @@ fn main() {
     let model = ModelConfig::new(10, 512).init::<MyBackend>(&device);
 
     println!("{}", model);
-    model.save_file(
-        "models/model_conv2x2.json",
-        &PrettyJsonFileRecorder::<FullPrecisionSettings>::new(),
-    ).unwrap();
+
+    let dataset = ImageFolderDataset::hs_test();
+    println!("{}", dataset.len());
+
+    let mean = dataset
+        .iter()
+        .map(|val| {
+            TensorData::new(
+                val.image
+                    .iter()
+                    .map(|val| -> u8 { val.clone().try_into().unwrap() })
+                    .collect::<Vec<_>>(),
+                Shape::new([820, 200, 3]),
+            )
+        })
+        .map(|data| Tensor::<MyBackend, 3>::from_data(data, &device) / 255)
+        .reduce(|val1, val2| val1 + val2);
+
+    println!("mean: {:?}", mean);
 }
