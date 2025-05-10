@@ -26,6 +26,10 @@ use tap::{Pipe, Tap};
 
 use crate::dataset::HandsignDataset;
 
+const IMAGE_LENGTH: usize = 820;
+const IMAGE_HEIGHT: usize = 200;
+const IMAGE_DEPTH: usize = 1;
+
 #[derive(Module, Debug)]
 pub struct Model<B: Backend> {
     conv1: Conv2d<B>,
@@ -48,61 +52,73 @@ pub struct ModelConfig {
 impl ModelConfig {
     /// Returns the initialized model.
     pub fn init<B: Backend>(&self, device: &B::Device) -> Model<B> {
+        const CONV1: usize = 1;
+        const CONV2: usize = 8;
+        const CONV3: usize = 16;
+
         Model {
-            conv1: Conv2dConfig::new([self.conv1_chans, self.conv2_chans], [3, 3])
+            conv1: Conv2dConfig::new([CONV1, CONV2], [3, 3])
+                .with_padding(nn::PaddingConfig2d::Same)
                 .init(device),
-            pool1: MaxPool2dConfig::new([3, 3]).init(),
-            conv2: Conv2dConfig::new(
-                [self.conv2_chans, 2],
-                [3, 3],
+            pool1: MaxPool2dConfig::new([3, 3])
+                .with_padding(nn::PaddingConfig2d::Same)
+                .init(),
+            conv2: Conv2dConfig::new([CONV2, CONV3], [3, 3])
+                .with_padding(nn::PaddingConfig2d::Same)
+                .init(device),
+            pool2: MaxPool2dConfig::new([3, 3])
+                .with_padding(nn::PaddingConfig2d::Same)
+                .init(),
+            linear1: LinearConfig::new(
+                IMAGE_LENGTH * IMAGE_HEIGHT * IMAGE_DEPTH * CONV3,
+                self.hidden_size,
             )
             .init(device),
-            pool2: MaxPool2dConfig::new([3, 3]).init(),
-            linear1: LinearConfig::new(2, self.hidden_size).init(device),
-            linear2: LinearConfig::new(self.hidden_size, 2).init(device),
+            linear2: LinearConfig::new(self.hidden_size, 1).init(device),
         }
     }
 }
 
 impl<B: Backend> Model<B> {
-    fn forward(&self, images: Tensor<B, 3>) -> Tensor<B, 2> {
-        let [batch_size, height, width] = images.dims();
-
-        log::info!("THIS IS HERE");
+    fn forward(&self, images: Tensor<B, 4>) -> Tensor<B, 1> {
+        let [batch_size, height, width, colors] = images.dims();
 
         images
-            .tap(|val| log::info!("\tlineno: {} | {:?}", line!(), val))
-            .reshape([batch_size, 1, height, width])
-            .tap(|val| log::info!("\tlineno: {} | {:?}", line!(), val))
+            .tap(|val| log::info!("\tlineno: {} | {:?}", line!(), val.dims()))
+            .detach()
+            .tap(|val| log::info!("\tlineno: {} | {:?}", line!(), val.dims()))
             .pipe(|val| self.conv1.forward(val))
-            .tap(|val| log::info!("\tlineno: {} | {:?}", line!(), val))
+            .tap(|val| log::info!("\tlineno: {} | {}", line!(), val))
             .pipe(|val| self.pool1.forward(val))
-            .tap(|val| log::info!("\tlineno: {} | {:?}", line!(), val))
+            .tap(|val| log::info!("\tlineno: {} | {:?}", line!(), val.dims()))
             .pipe(|val| self.conv2.forward(val))
-            .tap(|val| log::info!("\tlineno: {} | {:?}", line!(), val))
-            .tap(|val| log::info!("\tlineno: {} | {:?}", line!(), val))
-            .tap(|val| log::info!("\tlineno: {} | {:?}", line!(), val))
+            .tap(|val| log::info!("\tlineno: {} | {:?}", line!(), val.dims()))
+            .tap(|val| log::info!("\tlineno: {} | {}", line!(), val))
             .pipe(|val| self.pool2.forward(val))
-            .tap(|val| log::info!("\tlineno: {} | {:?}", line!(), val))
-            .pipe(|val| val.reshape([0, -1i32]))
-            .tap(|val| log::info!("\tlineno: {} | {:?}", line!(), val))
+            .tap(|val| log::info!("\tlineno: {} | {:?}", line!(), val.dims()))
+            .pipe(|val| val.reshape([0, -1]))
+            .tap(|val| log::info!("\tlineno: {} | {:?}", line!(), val.dims()))
             .pipe(|val| self.linear1.forward(val))
-            .tap(|val| log::info!("\tlineno: {} | {:?}", line!(), val))
+            .tap(|val| log::info!("\tlineno: {} | {:?}", line!(), val.dims()))
             .pipe(|val| self.linear2.forward(val))
-            .tap(|val| log::info!("\tlineno: {} | {:?}", line!(), val))
+            .tap(|val| log::info!("\tlineno: {} | {:?}", line!(), val.dims()))
+            .pipe(|val| val.squeeze(1))
     }
 
     fn forward_classification(
         &self,
-        images: Tensor<B, 3>,
+        images: Tensor<B, 4>,
         targets: Tensor<B, 1, Int>,
     ) -> ClassificationOutput<B> {
         let output = self.forward(images);
-        let loss = CrossEntropyLossConfig::new()
+
+        log::error!("This is here!");
+
+        let loss = BinaryCrossEntropyLossConfig::new()
             .init(&output.device())
             .forward(output.clone(), targets.clone());
 
-        ClassificationOutput::new(loss, output, targets)
+        ClassificationOutput::new(loss, output.reshape([0i32, -1]), targets)
     }
 }
 
@@ -177,7 +193,7 @@ pub fn train<B: AutodiffBackend>(
         .batch_size(config.batch_size)
         .shuffle(config.seed)
         .num_workers(config.num_workers)
-        .build(ImageFolderDataset::hs_test());
+        .build(ImageFolderDataset::hs_train());
 
     let builder: LearnerBuilder<
         B,
@@ -224,7 +240,9 @@ impl<B: Backend> Batcher<ImageDatasetItem, HandsignBatch<B>>
     for HandsignBatcher<B>
 {
     fn batch(&self, items: Vec<ImageDatasetItem>) -> HandsignBatch<B> {
-        let images = items
+        log::error!("This is how much images there is: {:?}", items.len());
+
+        let images: Vec<Tensor<B, 3>> = items
             .iter()
             .map(|val| {
                 TensorData::new(
@@ -232,11 +250,36 @@ impl<B: Backend> Batcher<ImageDatasetItem, HandsignBatch<B>>
                         .iter()
                         .map(|val| -> u8 { val.clone().try_into().unwrap() })
                         .collect::<Vec<_>>(),
-                    Shape::new([820, 200, 1]),
+                    Shape::new([IMAGE_LENGTH, IMAGE_HEIGHT, IMAGE_DEPTH]),
                 )
             })
             .map(|data| Tensor::<B, 3>::from_data(data, &self.device) / 255)
+            .map(|tensor| {
+                let tensor = tensor.swap_dims(0, 2).swap_dims(1, 2);
+                log::error!("These are new dims: {:?}", tensor.dims());
+                tensor
+            })
             .collect::<Vec<_>>();
+
+        let mean = images
+            .iter()
+            .cloned()
+            .reduce(|l, r| l + r)
+            .unwrap()
+            .div_scalar(items.len() as f64);
+
+        let mean_shape = mean.shape();
+        let norm = Normalizer::new(
+            &self.device,
+            mean.clone(),
+            images
+                .iter()
+                .cloned()
+                .fold(Tensor::zeros(mean_shape, &self.device), |acc, val| {
+                    acc + (val - mean.clone()).powi_scalar(2)
+                })
+                .sqrt(),
+        );
 
         let targets = items
             .iter()
@@ -249,10 +292,16 @@ impl<B: Backend> Batcher<ImageDatasetItem, HandsignBatch<B>>
             })
             .collect::<Vec<_>>();
 
-        let images = Tensor::cat(images, 0);
-        log::info!("Images: {:?}", images);
+        let images = images
+            .into_iter()
+            .map(|img| norm.normalize(img))
+            .collect::<Vec<_>>();
+
+        log::info!("images.first(): {}", images.first().unwrap());
+        let images: Tensor<B, 4> = Tensor::stack(images, 0);
+        log::info!("Images: {}", images);
         let targets = Tensor::cat(targets, 0);
-        log::info!("Targets: {:?}", targets);
+        log::info!("Targets: {}", targets);
 
         HandsignBatch { images, targets }
     }
@@ -260,7 +309,7 @@ impl<B: Backend> Batcher<ImageDatasetItem, HandsignBatch<B>>
 
 #[derive(Debug, Clone)]
 struct HandsignBatch<B: Backend> {
-    pub images: Tensor<B, 3>,
+    pub images: Tensor<B, 4>,
     pub targets: Tensor<B, 1, Int>,
 }
 
