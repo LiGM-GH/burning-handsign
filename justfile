@@ -1,25 +1,16 @@
 # List all commands
 default:
-    just --list
+  just --list
 
 # Model generation
-rust-learn:
-    (cargo run learn || (cat ./artifacts/valid/epoch-10/Accuracy.log | nview)) && (cat ./artifacts/experiment.log | nview)
+learn: check
+  (cargo run learn || less ./artifacts/valid/epoch-10/Accuracy.log)
+  less ./artifacts/experiment.log
 
 # Mean and std generation
-rust-mean:
-    cargo run mean_std
+mean: check
+  cargo run mean_std
 
+# Run Rust pre-compilation check
 check:
-    cargo check
-
-# # Python conversion to ONNX format (not operating currently)
-# py:
-#     uv --directory scripts run to_onnx.py
-
-# # Python conversion to ONNX format
-# pyalt:
-#     uv --directory scripts run alt_convert.py
-
-# # Run sequentially first creation of the model, then its conversion to ONNX
-# all: rust pyalt
+  cargo check

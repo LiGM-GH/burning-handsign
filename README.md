@@ -8,18 +8,13 @@ Just
 just
 ```
 will list all available options.
-To run rust part,
+
+To run learning,
 ```sh
-just rust
-```
-To run python part,
-```sh
-just pyalt
-```
-To run all at once,
-```sh
-just all
+just learn
 ```
 
-### Why is Python here?
-Unfortunately, Rust's Burn library doesn't currently support direct ONNX export which is needed by frontend, so python's here to make it easier
+To only find out dataset's mean and standard deviation, run:
+```sh
+just mean
+```
