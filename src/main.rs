@@ -68,7 +68,7 @@ fn learn() {
         model::TrainingConfig::new(
             ModelConfig::new(3, 1, 16),
             AdamConfig::new(),
-        ).with_learning_rate(1.5),
+        ),
         &device,
     );
 }
