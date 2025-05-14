@@ -4,7 +4,7 @@ default:
 
 # Model generation
 learn: check
-  (cargo run learn || less ./artifacts/valid/epoch-10/Accuracy.log)
+  cargo run learn
   less ./artifacts/experiment.log
 
 # Mean and std generation
@@ -14,3 +14,7 @@ mean: check
 # Run Rust pre-compilation check
 check:
   cargo check
+
+# Look at the result of the previous run
+peek:
+  less ./artifacts/experiment.log
