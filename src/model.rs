@@ -92,7 +92,6 @@ impl<B: Backend> Model<B> {
         #[rustfmt::skip]
         let result =
             images
-            .detach()
             .pipe(|x| { log::error!("FORWARD: {}", x); x})
             .pipe(|x| self.conv1.forward(x))
             .pipe(|x| { log::error!("FORWARD: {}", x); x})

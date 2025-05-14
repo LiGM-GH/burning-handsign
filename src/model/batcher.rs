@@ -134,7 +134,7 @@ impl<B: Backend> Batcher<ImageDatasetItem, HandsignBatch<B>>
             .collect::<Vec<_>>();
 
         log::info!("images.first(): {}", images.first().unwrap());
-        let images: Tensor<B, 4> = Tensor::stack(images, 0);
+        let images: Tensor<B, 4> = Tensor::stack(images, 0).detach();
         log::info!("Images: {}", images);
         let targets = Tensor::cat(targets, 0);
         log::info!("Targets: {}", targets);
