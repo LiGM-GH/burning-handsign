@@ -1,7 +1,7 @@
 use burn::data::dataset::vision::ImageFolderDataset;
 
-const TEST_PATH: &str  = "../handwritten-signatures/handsign-dataset/test/";
-const TRAIN_PATH: &str = "../handwritten-signatures/handsign-dataset/train/";
+const TEST_PATH: &str  = "../handwritten-signatures-ver1/png/";
+const TRAIN_PATH: &str = "../handwritten-signatures-ver1/png/";
 
 pub trait HandsignDataset {
     fn hs_test() -> Self;

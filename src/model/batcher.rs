@@ -73,6 +73,8 @@ impl<B: Backend> Batcher<ImageDatasetItem, HandsignBatch<B>>
         let images: Vec<Tensor<B, 3>> = items
             .iter()
             .map(|val| {
+                log::info!("Current image: {}", val.image_path);
+
                 TensorData::new(
                     val.image
                         .iter()

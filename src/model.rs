@@ -1,10 +1,13 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, path::Path};
 
 use batcher::{HandsignBatch, HandsignBatcher};
 use burn::{
     data::{
         dataloader::{DataLoader, DataLoaderBuilder, batcher::Batcher},
-        dataset::vision::{ImageDatasetItem, ImageFolderDataset},
+        dataset::{
+            Dataset,
+            vision::{ImageDatasetItem, ImageFolderDataset},
+        },
     },
     nn::{
         Linear, LinearConfig, Relu, Sigmoid,
@@ -14,25 +17,26 @@ use burn::{
     },
     optim::AdamConfig,
     prelude::*,
-    record::CompactRecorder,
+    record::{CompactRecorder, Recorder},
     tensor::backend::AutodiffBackend,
     train::{
-        ClassificationOutput, Learner, LearnerBuilder, TrainOutput, TrainStep,
-        ValidStep,
+        Learner, LearnerBuilder, TrainOutput, TrainStep, ValidStep,
         metric::{AccuracyMetric, LossMetric},
     },
 };
+use metric::{BinaryClassificationOutput, TimesGuessedMetric};
 use nn::loss::CrossEntropyLossConfig;
 use tap::{Pipe, Tap};
 
 use crate::dataset::HandsignDataset;
 
 mod batcher;
+mod metric;
 mod normalizer;
 
-const IMAGE_LENGTH: usize = 820;
-const IMAGE_HEIGHT: usize = 200;
-const IMAGE_DEPTH: usize = 1;
+pub const IMAGE_LENGTH: usize = 600;
+pub const IMAGE_HEIGHT: usize = 600;
+pub const IMAGE_DEPTH: usize = 1;
 
 #[derive(Module, Debug)]
 pub struct Model<B: Backend> {
@@ -121,7 +125,7 @@ impl<B: Backend> Model<B> {
         &self,
         images: Tensor<B, 4>,
         targets: Tensor<B, 1, Int>,
-    ) -> ClassificationOutput<B> {
+    ) -> BinaryClassificationOutput<B> {
         let output = self.forward(images);
 
         log::error!("FORWARD::OUTPUT: {}", output);
@@ -133,17 +137,17 @@ impl<B: Backend> Model<B> {
 
         log::error!("FORWARD::LOSS: {}", loss);
 
-        ClassificationOutput::new(loss, output.reshape([0i32, -1]), targets)
+        BinaryClassificationOutput::new(loss, output, targets)
     }
 }
 
-impl<B: AutodiffBackend> TrainStep<HandsignBatch<B>, ClassificationOutput<B>>
-    for Model<B>
+impl<B: AutodiffBackend>
+    TrainStep<HandsignBatch<B>, BinaryClassificationOutput<B>> for Model<B>
 {
     fn step(
         &self,
         item: HandsignBatch<B>,
-    ) -> TrainOutput<ClassificationOutput<B>> {
+    ) -> TrainOutput<BinaryClassificationOutput<B>> {
         let HandsignBatch { images, targets } = item;
         let item = self.forward_classification(images, targets);
         let grads = item.loss.backward();
@@ -152,10 +156,10 @@ impl<B: AutodiffBackend> TrainStep<HandsignBatch<B>, ClassificationOutput<B>>
     }
 }
 
-impl<B: Backend> ValidStep<HandsignBatch<B>, ClassificationOutput<B>>
+impl<B: Backend> ValidStep<HandsignBatch<B>, BinaryClassificationOutput<B>>
     for Model<B>
 {
-    fn step(&self, item: HandsignBatch<B>) -> ClassificationOutput<B> {
+    fn step(&self, item: HandsignBatch<B>) -> BinaryClassificationOutput<B> {
         let HandsignBatch { images, targets } = item;
         self.forward_classification(images, targets)
     }
@@ -209,18 +213,18 @@ pub fn train<B: AutodiffBackend>(
         .batch_size(config.batch_size)
         .shuffle(config.seed)
         .num_workers(config.num_workers)
-        .build(ImageFolderDataset::hs_train());
+        .build(ImageFolderDataset::hs_test());
 
     let builder: LearnerBuilder<
         B,
         _,
-        ClassificationOutput<_>,
+        BinaryClassificationOutput<_>,
         Model<B>,
         burn::optim::adaptor::OptimizerAdaptor<burn::optim::Adam, Model<B>, B>,
         f64,
     > = LearnerBuilder::new(artifact_dir)
-        .metric_train_numeric(AccuracyMetric::new())
-        .metric_valid_numeric(AccuracyMetric::new())
+        .metric_train_numeric(TimesGuessedMetric::new())
+        .metric_valid_numeric(TimesGuessedMetric::new())
         .metric_train_numeric(LossMetric::new())
         .metric_valid_numeric(LossMetric::new())
         .with_file_checkpointer(CompactRecorder::new())
@@ -239,4 +243,61 @@ pub fn train<B: AutodiffBackend>(
     model_trained
         .save_file(format!("{artifact_dir}/model"), &CompactRecorder::new())
         .expect("Model should be saved successfully")
+}
+
+pub fn guess<B: Backend>(
+    artifact_dir: &str,
+    device: B::Device,
+    images_path: impl AsRef<Path>,
+) {
+    let image = ImageFolderDataset::new_classification(&images_path)
+        .expect(&format!(
+            "Dataset should exist  in path {}",
+            images_path.as_ref().to_string_lossy()
+        ))
+        .get(0)
+        .expect(&format!(
+            "Dataset should contain at least a single image in {}",
+            images_path.as_ref().to_string_lossy()
+        ))
+        .pipe(|val| {
+            log::info!("Current image: {}", val.image_path);
+
+            TensorData::new(
+                val.image
+                    .iter()
+                    .map(|val| -> u8 { val.clone().try_into().unwrap() })
+                    .collect::<Vec<_>>(),
+                Shape::new([IMAGE_LENGTH, IMAGE_HEIGHT, IMAGE_DEPTH]),
+            )
+        })
+        .pipe(|data| Tensor::<B, 3>::from_data(data, &device) / 255)
+        .pipe(|tensor| {
+            let tensor = tensor.swap_dims(0, 2).swap_dims(1, 2);
+            log::error!("These are new dims: {:?}", tensor.dims());
+            tensor
+        });
+
+    let config = TrainingConfig::load(format!("{artifact_dir}/config.json"))
+        .expect("Couldn't load config");
+
+    let record = CompactRecorder::new()
+        .load(format!("{artifact_dir}/model").into(), &device)
+        .expect("Trained model should exist; run train first");
+
+    let model = config.model.init::<B>(&device).load_record(record);
+
+    let targets =
+        Tensor::from_data(TensorData::new(vec![0], Shape::new([1])), &device);
+
+    let batch = HandsignBatch {
+        images: Tensor::stack(vec![image], 0),
+        targets,
+    };
+
+    println!("batch: {:?}", batch);
+
+    let output = model.forward(batch.images);
+
+    println!("output: {}", output);
 }

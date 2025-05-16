@@ -43,10 +43,12 @@ impl<B: Backend> Normalizer<B> {
         let result = (input.clone() - self.mean.clone()) / self.stddev.clone();
 
         log::error!("This {} has been normalized to: {}", input, result);
+
         assert!(
             !result.clone().abs().greater_elem(1.0).any().into_scalar(),
             "All elements should be less than 1"
         );
+
         result
     }
 

@@ -11,6 +11,10 @@ learn: check
 mean: check
   cargo run mean_std
 
+# Guess first picture in other dataset
+guess: check
+  cargo run guess
+
 # Run Rust pre-compilation check
 check:
   cargo check
