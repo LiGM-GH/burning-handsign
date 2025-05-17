@@ -63,6 +63,12 @@ pub struct TimesGuessedInput<B: Backend> {
     targets: Tensor<B, 1, Int>,
 }
 
+pub fn tensor_to_guesses<B: Backend>(
+    tensor: Tensor<B, 1>,
+) -> Tensor<B, 1, Int> {
+    tensor.greater_elem(GUESS_BORDER).bool_not().int()
+}
+
 impl<B: Backend> Metric for TimesGuessedMetric<B> {
     type Input = TimesGuessedInput<B>;
 
@@ -75,12 +81,7 @@ impl<B: Backend> Metric for TimesGuessedMetric<B> {
     ) -> MetricEntry {
         let [batch_size] = times.tensor.dims();
 
-        let real_times = times
-            .tensor
-            .clone()
-            .greater_elem(GUESS_BORDER)
-            .bool_not()
-            .int()
+        let real_times = tensor_to_guesses(times.tensor.clone())
             .sub(times.targets.clone())
             .powi_scalar(2)
             .sum();

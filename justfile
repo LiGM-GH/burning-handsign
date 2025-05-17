@@ -4,16 +4,16 @@ default:
 
 # Model generation
 learn: check
-  cargo run learn
+  cargo run --release learn
   less ./artifacts/experiment.log
 
 # Mean and std generation
 mean: check
-  cargo run mean_std
+  cargo run --release mean_std
 
 # Guess first picture in other dataset
 guess: check
-  cargo run guess
+  cargo run --release guess
 
 # Run Rust pre-compilation check
 check:

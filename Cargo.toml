@@ -10,3 +10,7 @@ bincode_derive = "=2.0.0-rc.3"
 tap = "1.0.1"
 log = "0.4.27"
 derive-new = "0.7.0"
+
+[profile.release]
+lto = true
+codegen-units = 1

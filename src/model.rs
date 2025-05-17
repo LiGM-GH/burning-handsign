@@ -18,13 +18,15 @@ use burn::{
     optim::AdamConfig,
     prelude::*,
     record::{CompactRecorder, Recorder},
-    tensor::backend::AutodiffBackend,
+    tensor::{backend::AutodiffBackend, cast::ToElement},
     train::{
         Learner, LearnerBuilder, TrainOutput, TrainStep, ValidStep,
         metric::{AccuracyMetric, LossMetric},
     },
 };
-use metric::{BinaryClassificationOutput, TimesGuessedMetric};
+use metric::{
+    BinaryClassificationOutput, TimesGuessedMetric, tensor_to_guesses,
+};
 use nn::loss::CrossEntropyLossConfig;
 use tap::{Pipe, Tap};
 
@@ -250,17 +252,13 @@ pub fn guess<B: Backend>(
     device: B::Device,
     images_path: impl AsRef<Path>,
 ) {
-    let image = ImageFolderDataset::new_classification(&images_path)
+    let images = ImageFolderDataset::new_classification(&images_path)
         .expect(&format!(
             "Dataset should exist  in path {}",
             images_path.as_ref().to_string_lossy()
         ))
-        .get(0)
-        .expect(&format!(
-            "Dataset should contain at least a single image in {}",
-            images_path.as_ref().to_string_lossy()
-        ))
-        .pipe(|val| {
+        .iter()
+        .map(|val| {
             log::info!("Current image: {}", val.image_path);
 
             TensorData::new(
@@ -271,12 +269,13 @@ pub fn guess<B: Backend>(
                 Shape::new([IMAGE_LENGTH, IMAGE_HEIGHT, IMAGE_DEPTH]),
             )
         })
-        .pipe(|data| Tensor::<B, 3>::from_data(data, &device) / 255)
-        .pipe(|tensor| {
+        .map(|data| Tensor::<B, 3>::from_data(data, &device) / 255)
+        .map(|tensor| {
             let tensor = tensor.swap_dims(0, 2).swap_dims(1, 2);
             log::error!("These are new dims: {:?}", tensor.dims());
             tensor
-        });
+        })
+        .collect::<Vec<_>>();
 
     let config = TrainingConfig::load(format!("{artifact_dir}/config.json"))
         .expect("Couldn't load config");
@@ -287,11 +286,18 @@ pub fn guess<B: Backend>(
 
     let model = config.model.init::<B>(&device).load_record(record);
 
-    let targets =
-        Tensor::from_data(TensorData::new(vec![0], Shape::new([1])), &device);
+    let len = images.len();
+
+    let targets = Tensor::from_data(
+        TensorData::new(
+            std::iter::repeat_n(1, len).collect::<Vec<_>>(),
+            Shape::new([images.len()]),
+        ),
+        &device,
+    );
 
     let batch = HandsignBatch {
-        images: Tensor::stack(vec![image], 0),
+        images: Tensor::stack(images, 0),
         targets,
     };
 
@@ -300,4 +306,18 @@ pub fn guess<B: Backend>(
     let output = model.forward(batch.images);
 
     println!("output: {}", output);
+
+    let guesses = tensor_to_guesses(output);
+    let guessed_part = guesses
+        .sub(batch.targets)
+        .powi_scalar(2)
+        .sum()
+        .into_scalar();
+
+    println!(
+        "Guessed {} times out of {}: {:.2}%",
+        guessed_part,
+        len,
+        guessed_part.to_i8() as f64 / len as f64 * 100.0,
+    );
 }
