@@ -93,42 +93,55 @@ impl<B: Backend> Batcher<ImageDatasetItem, HandsignBatch<B>>
 
         log::error!("Images: {:?}", images);
 
-        let mean = images
-            .iter()
-            .cloned()
-            .reduce(|l, r| l + r)
-            .unwrap()
-            .div_scalar(items.len() as f64);
+        // let mean = images
+        //     .iter()
+        //     .cloned()
+        //     .reduce(|l, r| l + r)
+        //     .unwrap()
+        //     .div_scalar(items.len() as f64);
 
-        log::error!("Mean: {}", mean);
+        // log::error!("Mean: {}", mean);
 
-        let mean_shape = mean.shape();
-        let stddev = images
-            .iter()
-            .cloned()
-            .fold(Tensor::zeros(mean_shape, &self.device), |acc, val| {
-                let thing = val - mean.clone();
-                log::error!("STDDEV's STEP IS {}", thing);
-                acc + (thing).powi_scalar(2)
-            })
-            .sqrt();
+        // let mean_shape = mean.shape();
+        // let stddev = images
+        //     .iter()
+        //     .cloned()
+        //     .fold(Tensor::zeros(mean_shape, &self.device), |acc, val| {
+        //         let thing = val - mean.clone();
+        //         log::error!("STDDEV's STEP IS {}", thing);
+        //         acc + (thing).powi_scalar(2)
+        //     })
+        //     .sqrt();
 
-        let that_mean = stddev.clone().max().into_scalar();
-        log::error!("STDDEV: {}", that_mean);
-        let stddev = stddev.full_like(that_mean);
+        use crate::{
+            MEAN_DS,
+            STDDEV_DS,
+        };
 
-        let norm = Normalizer::new(&self.device, mean.clone(), stddev);
+        // let that_mean = stddev.clone().max().into_scalar();
+        // log::error!("STDDEV: {}", that_mean);
+        // let stddev = stddev.full_like(that_mean);
 
         let targets = items
             .iter()
             .map(|val| {
-                Tensor::from_data(
-                    [(val.image_path.find("forge").map(|_| 1).unwrap_or(0))
-                        .elem::<B::IntElem>()],
-                    &self.device,
-                )
+                let is_forge =
+                    val.image_path.find("forge").map(|_| 1).unwrap_or(0);
+
+                log::info!("Image {} is forged: {}", val.image_path, is_forge);
+
+                Tensor::from_data([is_forge.elem::<B::IntElem>()], &self.device)
             })
             .collect::<Vec<_>>();
+
+        let mean = images
+            .first()
+            .expect("Not a single item in the dir")
+            .full_like(MEAN_DS);
+
+        let stddev = mean.full_like(STDDEV_DS);
+
+        let norm = Normalizer::new(&self.device, mean.clone(), stddev);
 
         let images = images
             .into_iter()

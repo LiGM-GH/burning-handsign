@@ -15,6 +15,11 @@ mean: check
 guess: check
   cargo run --release guess
 
+# Learn and then guess
+reguess:
+  cargo run --release learn
+  cargo run --release guess
+
 # Run Rust pre-compilation check
 check:
   cargo check

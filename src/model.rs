@@ -10,7 +10,8 @@ use burn::{
         },
     },
     nn::{
-        Linear, LinearConfig, Relu, Sigmoid,
+        BatchNorm, BatchNormConfig, Dropout, DropoutConfig, Linear,
+        LinearConfig, Relu,
         conv::{Conv2d, Conv2dConfig},
         loss::{BinaryCrossEntropyLoss, BinaryCrossEntropyLossConfig},
         pool::{MaxPool2d, MaxPool2dConfig},
@@ -18,7 +19,7 @@ use burn::{
     optim::AdamConfig,
     prelude::*,
     record::{CompactRecorder, Recorder},
-    tensor::{backend::AutodiffBackend, cast::ToElement},
+    tensor::{backend::AutodiffBackend, cast::ToElement, module::avg_pool2d},
     train::{
         Learner, LearnerBuilder, TrainOutput, TrainStep, ValidStep,
         metric::{AccuracyMetric, LossMetric},
@@ -28,6 +29,7 @@ use metric::{
     BinaryClassificationOutput, TimesGuessedMetric, tensor_to_guesses,
 };
 use nn::loss::CrossEntropyLossConfig;
+use normalizer::Normalizer;
 use tap::{Pipe, Tap};
 
 use crate::dataset::HandsignDataset;
@@ -43,12 +45,26 @@ pub const IMAGE_DEPTH: usize = 1;
 #[derive(Module, Debug)]
 pub struct Model<B: Backend> {
     activation: Relu,
+
     conv1: Conv2d<B>,
-    pool1: MaxPool2d,
-    conv2: Conv2d<B>,
-    pool2: MaxPool2d,
-    linear1: Linear<B>,
-    linear2: Linear<B>,
+    norm2: BatchNorm<B, 2>,
+    pool3: MaxPool2d,
+
+    conv4: Conv2d<B>,
+    norm5: BatchNorm<B, 2>,
+
+    pool6: MaxPool2d,
+    drop7: Dropout,
+
+    conv8: Conv2d<B>,
+    conv9: Conv2d<B>,
+    pool10: MaxPool2d,
+    drop11: Dropout,
+
+    linear12: Linear<B>,
+    drop13: Dropout,
+
+    linear14: Linear<B>,
 }
 
 #[derive(Config, Debug)]
@@ -66,28 +82,43 @@ impl ModelConfig {
         const CONV1: usize = 1;
         const CONV2: usize = 8;
         const CONV3: usize = 16;
+        // const INITIAL_SIZE: usize = IMAGE_HEIGHT * IMAGE_WIDTH * IMAGE_DEPTH;
+        // TODO:
+        // const SIZE1: usize = INITIAL_SIZE;
+        // const LAST_SIZE: usize = WHATEVER_EXPR_INVOLVING_PREV_CONSTS;
 
-        Model {
+        let thing = Model {
             activation: Relu::new(),
-            conv1: Conv2dConfig::new([CONV1, CONV2], [3, 3])
-                .with_padding(nn::PaddingConfig2d::Same)
+            conv1: Conv2dConfig::new([CONV1, CONV2], [11, 11])
+                .with_stride([1, 1])
                 .init(device),
-            pool1: MaxPool2dConfig::new([3, 3])
-                .with_padding(nn::PaddingConfig2d::Same)
-                .init(),
-            conv2: Conv2dConfig::new([CONV2, CONV3], [3, 3])
-                .with_padding(nn::PaddingConfig2d::Same)
+            norm2: BatchNormConfig::new(CONV2).init(device),
+            pool3: MaxPool2dConfig::new([3, 3]).with_strides([2, 2]).init(),
+            conv4: Conv2dConfig::new([CONV2, CONV3], [5, 5])
+                .with_stride([1, 1])
+                .with_padding(nn::PaddingConfig2d::Explicit(2, 2))
                 .init(device),
-            pool2: MaxPool2dConfig::new([3, 3])
-                .with_padding(nn::PaddingConfig2d::Same)
-                .init(),
-            linear1: LinearConfig::new(
-                IMAGE_LENGTH * IMAGE_HEIGHT * IMAGE_DEPTH * CONV3,
-                self.hidden_size,
-            )
-            .init(device),
-            linear2: LinearConfig::new(self.hidden_size, 1).init(device),
-        }
+            norm5: BatchNormConfig::new(CONV3).init(device),
+            pool6: MaxPool2dConfig::new([3, 3]).with_strides([2, 2]).init(),
+            drop7: DropoutConfig::new(0.3).init(),
+            conv8: Conv2dConfig::new([CONV3, CONV3], [3, 3])
+                .with_stride([1, 1])
+                .with_padding(nn::PaddingConfig2d::Explicit(1, 1))
+                .init(device),
+            conv9: Conv2dConfig::new([CONV3, CONV3], [3, 3])
+                .with_stride([1, 1])
+                .with_padding(nn::PaddingConfig2d::Explicit(1, 1))
+                .init(device),
+            pool10: MaxPool2dConfig::new([3, 3]).with_strides([2, 2]).init(),
+            drop11: DropoutConfig::new(0.3).init(),
+            linear12: LinearConfig::new(CONV3, CONV3).init(device),
+            drop13: DropoutConfig::new(0.5).init(),
+            linear14: LinearConfig::new(CONV3, CONV3).init(device),
+        };
+
+        println!("thing: {:?}", thing);
+
+        thing
     }
 }
 
@@ -96,29 +127,37 @@ impl<B: Backend> Model<B> {
         let [batch_size, height, width, colors] = images.dims();
 
         #[rustfmt::skip]
-        let result =
-            images
-            .pipe(|x| { log::error!("FORWARD: {}", x); x})
+        let result = images
+            .pipe(|x| { log::error!("line {} | FORWARD: {:?}", line!(), x.dims()); x})
             .pipe(|x| self.conv1.forward(x))
-            .pipe(|x| { log::error!("FORWARD: {}", x); x})
-            .pipe(|x| self.activation.forward(x))
-            .pipe(|x| { log::error!("FORWARD: {}", x); x})
-            .pipe(|x| self.pool1.forward(x))
-            .pipe(|x| { log::error!("FORWARD: {}", x); x})
-            .pipe(|x| self.conv2.forward(x))
-            .pipe(|x| { log::error!("FORWARD: {}", x); x})
-            .pipe(|x| self.activation.forward(x))
-            .pipe(|x| { log::error!("FORWARD: {}", x); x})
-            .pipe(|x| self.pool2.forward(x))
-            .pipe(|x| { log::error!("FORWARD: {}", x); x})
-            .pipe(|x| x.reshape([0, -1]))
-            .pipe(|x| { log::error!("FORWARD: {}", x); x})
-            .pipe(|x| self.linear1.forward(x))
-            .pipe(|x| { log::error!("FORWARD: {}", x); x})
-            .pipe(|x| self.linear2.forward(x))
-            .pipe(|x| { log::error!("FORWARD: {}", x); x})
-            .pipe(|x| x.squeeze(1))
-            .pipe(|x| { log::error!("FORWARD: {}", x); x});
+            .pipe(|x| { log::error!("line {} | FORWARD: {:?}", line!(), x.dims()); x})
+            .pipe(|x| self.norm2.forward(x))
+            .pipe(|x| { log::error!("line {} | FORWARD: {:?}", line!(), x.dims()); x})
+            .pipe(|x| self.pool3.forward(x))
+            .pipe(|x| { log::error!("line {} | FORWARD: {:?}", line!(), x.dims()); x})
+            .pipe(|x| self.conv4.forward(x))
+            .pipe(|x| { log::error!("line {} | FORWARD: {:?}", line!(), x.dims()); x})
+            .pipe(|x| self.norm5.forward(x))
+            .pipe(|x| { log::error!("line {} | FORWARD: {:?}", line!(), x.dims()); x})
+            .pipe(|x| self.pool6.forward(x))
+            .pipe(|x| { log::error!("line {} | FORWARD: {:?}", line!(), x.dims()); x})
+            .pipe(|x| self.drop7.forward(x))
+            .pipe(|x| { log::error!("line {} | FORWARD: {:?}", line!(), x.dims()); x})
+            .pipe(|x| self.conv8.forward(x))
+            .pipe(|x| { log::error!("line {} | FORWARD: {:?}", line!(), x.dims()); x})
+            .pipe(|x| self.conv9.forward(x))
+            .pipe(|x| { log::error!("line {} | FORWARD: {:?}", line!(), x.dims()); x})
+            .pipe(|x| self.pool10.forward(x))
+            .pipe(|x| { log::error!("line {} | FORWARD: {:?}", line!(), x.dims()); x})
+            .pipe(|x| self.drop11.forward(x))
+            .pipe(|x| { log::error!("line {} | FORWARD: {:?}", line!(), x.dims()); x})
+            .pipe(|x| x.reshape([-1]))
+            .pipe(|x| { log::error!("line {} | FORWARD: {:?}", line!(), x.dims()); x})
+            .pipe(|x| self.linear12.forward(x))
+            .pipe(|x| { log::error!("line {} | FORWARD: {:?}", line!(), x.dims()); x})
+            .pipe(|x| self.drop13.forward(x))
+            .pipe(|x| { log::error!("line {} | FORWARD: {:?}", line!(), x.dims()); x})
+            .pipe(|x| self.linear14.forward(x));
 
         result
     }
@@ -251,6 +290,8 @@ pub fn guess<B: Backend>(
     artifact_dir: &str,
     device: B::Device,
     images_path: impl AsRef<Path>,
+    mean: f64,
+    stddev: f64,
 ) {
     let images = ImageFolderDataset::new_classification(&images_path)
         .expect(&format!(
@@ -275,6 +316,20 @@ pub fn guess<B: Backend>(
             log::error!("These are new dims: {:?}", tensor.dims());
             tensor
         })
+        .collect::<Vec<_>>();
+
+    let mean = images
+        .first()
+        .expect("Not a single item in the directory!")
+        .full_like(mean);
+
+    let stddev = mean.full_like(stddev);
+
+    let norm = Normalizer::new(&device, mean, stddev);
+
+    let images = images
+        .into_iter()
+        .map(|val| norm.normalize(val))
         .collect::<Vec<_>>();
 
     let config = TrainingConfig::load(format!("{artifact_dir}/config.json"))

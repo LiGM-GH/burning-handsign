@@ -26,6 +26,7 @@ fn mean_std() {
 
     let ds_outer = dataset
         .iter()
+        .filter(|val| !val.image_path.contains("forge"))
         .map(|val| {
             TensorData::new(
                 val.image
@@ -78,18 +79,18 @@ fn learn() {
     train::<Autodiff<MyBackend>>(
         "artifacts",
         model::TrainingConfig::new(
-            ModelConfig::new(3, 1, 16),
+            ModelConfig::new(3, 1, 16).with_dropout(0.5),
             AdamConfig::new(),
         )
-        .with_num_epochs(20),
+        .with_num_epochs(100),
         &device,
     );
 }
 
-fn guess() {
-    const MEAN_DS: f64 = 15.6646185;
-    const STDDEV_DS: f64 = 60.0;
+const MEAN_DS: f64 = 8.853009;
+const STDDEV_DS: f64 = 24.0;
 
+fn guess() {
     type MyBackend = burn::backend::LibTorch;
 
     let device = <MyBackend as Backend>::Device::default();
@@ -98,6 +99,8 @@ fn guess() {
         "artifacts",
         device,
         "../handwritten-signatures-ver1/next-forge",
+        MEAN_DS,
+        STDDEV_DS,
     );
 }
 
