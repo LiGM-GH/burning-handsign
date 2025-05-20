@@ -82,7 +82,7 @@ fn learn() {
             ModelConfig::new(3, 1, 16).with_dropout(0.5),
             AdamConfig::new(),
         )
-        .with_num_epochs(100),
+        .with_num_epochs(30),
         &device,
     );
 }
