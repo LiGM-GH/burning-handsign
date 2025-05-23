@@ -4,12 +4,14 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-burn = { version = "0.16.0", features = ["train", "vision", "tch"] }
+burn = { version = "0.16.0", features = ["train", "vision", "tch", "wgpu"] }
 bincode = "=2.0.0-rc.3"
 bincode_derive = "=2.0.0-rc.3"
 tap = "1.0.1"
 log = "0.4.27"
 derive-new = "0.7.0"
+image = "0.25.6"
+rand = "0.9.1"
 
 [profile.release]
 lto = true

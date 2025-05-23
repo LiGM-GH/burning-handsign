@@ -2,8 +2,8 @@ use burn::{
     prelude::Backend,
     tensor::{Int, Tensor, Transaction},
     train::metric::{
-        AccuracyInput, Adaptor, ItemLazy, LossInput, Metric, MetricEntry,
-        MetricMetadata, Numeric,
+        Adaptor, ItemLazy, LossInput, Metric, MetricEntry, MetricMetadata,
+        Numeric,
         state::{FormatOptions, NumericMetricState},
     },
 };

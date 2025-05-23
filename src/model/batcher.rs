@@ -1,33 +1,20 @@
-use std::marker::PhantomData;
-
 use burn::{
-    data::{
-        dataloader::{DataLoader, DataLoaderBuilder, batcher::Batcher},
-        dataset::vision::{ImageDatasetItem, ImageFolderDataset},
-    },
-    nn::{
-        Linear, LinearConfig, Relu,
-        conv::{Conv2d, Conv2dConfig},
-        loss::BinaryCrossEntropyLossConfig,
-        pool::{MaxPool2d, MaxPool2dConfig},
-    },
-    optim::AdamConfig,
+    data::{dataloader::batcher::Batcher, dataset::vision::ImageDatasetItem},
     prelude::*,
-    record::CompactRecorder,
-    tensor::backend::AutodiffBackend,
-    train::{
-        ClassificationOutput, Learner, LearnerBuilder, TrainOutput, TrainStep,
-        ValidStep,
-        metric::{AccuracyMetric, LossMetric},
-    },
 };
-use nn::loss::CrossEntropyLossConfig;
-use tap::{Pipe, Tap};
 
 use crate::{
-    dataset::HandsignDataset,
+    MEAN_DS, STDDEV_DS,
+    dataset::CedarItem,
     model::{IMAGE_DEPTH, IMAGE_HEIGHT, IMAGE_LENGTH, normalizer::Normalizer},
 };
+
+#[derive(Debug, Clone)]
+pub struct CedarBatch<B: Backend> {
+    pub left: Tensor<B, 4>,
+    pub right: Tensor<B, 4>,
+    pub targets: Tensor<B, 1, Int>,
+}
 
 #[derive(Debug, Clone)]
 pub struct HandsignBatch<B: Backend> {
@@ -54,7 +41,7 @@ impl<B: Backend> Batcher<ImageDatasetItem, HandsignBatch<B>>
 
         let mut all_alike = true;
         let mut images_iter = items.iter();
-        let mut etalon = images_iter.next().unwrap();
+        let etalon = images_iter.next().unwrap();
 
         for image in images_iter {
             if image.image != etalon.image
@@ -93,35 +80,6 @@ impl<B: Backend> Batcher<ImageDatasetItem, HandsignBatch<B>>
 
         log::error!("Images: {:?}", images);
 
-        // let mean = images
-        //     .iter()
-        //     .cloned()
-        //     .reduce(|l, r| l + r)
-        //     .unwrap()
-        //     .div_scalar(items.len() as f64);
-
-        // log::error!("Mean: {}", mean);
-
-        // let mean_shape = mean.shape();
-        // let stddev = images
-        //     .iter()
-        //     .cloned()
-        //     .fold(Tensor::zeros(mean_shape, &self.device), |acc, val| {
-        //         let thing = val - mean.clone();
-        //         log::error!("STDDEV's STEP IS {}", thing);
-        //         acc + (thing).powi_scalar(2)
-        //     })
-        //     .sqrt();
-
-        use crate::{
-            MEAN_DS,
-            STDDEV_DS,
-        };
-
-        // let that_mean = stddev.clone().max().into_scalar();
-        // log::error!("STDDEV: {}", that_mean);
-        // let stddev = stddev.full_like(that_mean);
-
         let targets = items
             .iter()
             .map(|val| {
@@ -155,5 +113,93 @@ impl<B: Backend> Batcher<ImageDatasetItem, HandsignBatch<B>>
         log::info!("Targets: {}", targets);
 
         HandsignBatch { images, targets }
+    }
+}
+
+impl<B: Backend> Batcher<CedarItem, CedarBatch<B>> for HandsignBatcher<B> {
+    fn batch(&self, items: Vec<CedarItem>) -> CedarBatch<B> {
+        let left = items
+            .iter()
+            .map(|val| {
+                TensorData::new(
+                    val.first
+                        .iter()
+                        .map(|val| -> u8 { val.clone().try_into().unwrap() })
+                        .collect::<Vec<_>>(),
+                    Shape::new([IMAGE_LENGTH, IMAGE_HEIGHT, IMAGE_DEPTH]),
+                )
+            })
+            .map(|val| {
+                let thing: Tensor<B, 3> = Tensor::from_data(val, &self.device);
+                thing
+            })
+            .map(|tensor| {
+                let tensor = tensor.swap_dims(0, 2).swap_dims(1, 2);
+                log::error!("These are new dims: {:?}", tensor.dims());
+                tensor
+            })
+            .collect::<Vec<_>>();
+
+        let right = items
+            .iter()
+            .map(|val| {
+                TensorData::new(
+                    val.second
+                        .iter()
+                        .map(|val| -> u8 { val.clone().try_into().unwrap() })
+                        .collect::<Vec<_>>(),
+                    Shape::new([IMAGE_LENGTH, IMAGE_HEIGHT, IMAGE_DEPTH]),
+                )
+            })
+            .map(|val| {
+                let thing: Tensor<B, 3> = Tensor::from_data(val, &self.device);
+                thing
+            })
+            .map(|tensor| {
+                let tensor = tensor.swap_dims(0, 2).swap_dims(1, 2);
+                log::error!("These are new dims: {:?}", tensor.dims());
+                tensor
+            })
+            .collect::<Vec<_>>();
+
+        let targets = items
+            .iter()
+            .map(|val| {
+                let is_forge = val.is_ok;
+
+                log::info!("Image is forged: {}", is_forge);
+
+                Tensor::from_data([is_forge.elem::<B::IntElem>()], &self.device)
+            })
+            .collect::<Vec<_>>();
+
+        let mean = right
+            .first()
+            .expect("Not a single item in the dir")
+            .full_like(MEAN_DS);
+
+        let stddev = mean.full_like(STDDEV_DS);
+
+        let norm = Normalizer::new(&self.device, mean.clone(), stddev);
+
+        let left = left
+            .into_iter()
+            .map(|img| norm.normalize(img))
+            .collect::<Vec<_>>();
+
+        let right = right
+            .into_iter()
+            .map(|img| norm.normalize(img))
+            .collect::<Vec<_>>();
+
+        let left: Tensor<B, 4> = Tensor::stack(left, 0);
+        let right: Tensor<B, 4> = Tensor::stack(right, 0);
+        let targets = Tensor::cat(targets, 0);
+
+        CedarBatch {
+            left,
+            right,
+            targets,
+        }
     }
 }

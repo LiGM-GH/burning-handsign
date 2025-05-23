@@ -1,5 +1,3 @@
-#![allow(warnings)]
-
 use burn::{
     backend::Autodiff,
     data::dataset::{Dataset, vision::ImageFolderDataset},
@@ -8,8 +6,8 @@ use burn::{
     tensor::{Shape, Tensor, TensorData},
 };
 
-use dataset::HandsignDataset;
-use model::{IMAGE_DEPTH, IMAGE_HEIGHT, IMAGE_LENGTH, ModelConfig, train};
+use dataset::{HandsignDataset, IMAGE_DEPTH, IMAGE_HEIGHT, IMAGE_LENGTH};
+use model::{ModelConfig, train};
 
 mod dataset;
 mod model;
@@ -82,7 +80,7 @@ fn learn() {
             ModelConfig::new(3, 1, 16).with_dropout(0.5),
             AdamConfig::new(),
         )
-        .with_num_epochs(30),
+        .with_num_epochs(60),
         &device,
     );
 }
