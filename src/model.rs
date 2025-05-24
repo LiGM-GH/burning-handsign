@@ -6,7 +6,7 @@ use burn::{
         dataloader::DataLoaderBuilder,
         dataset::{Dataset, vision::ImageFolderDataset},
     },
-    optim::{AdamConfig, adaptor::OptimizerAdaptor},
+    optim::{AdamConfig, RmsPropConfig, adaptor::OptimizerAdaptor},
     prelude::*,
     record::{CompactRecorder, Recorder},
     tensor::{backend::AutodiffBackend, cast::ToElement},
@@ -154,7 +154,7 @@ impl<B: Backend> ValidStep<CedarBatch<B>, BinaryClassificationOutput<B>>
 #[derive(Config)]
 pub struct TrainingConfig {
     pub model: ModelConfig,
-    pub optimizer: AdamConfig,
+    pub optimizer: RmsPropConfig,
     #[config(default = 10)]
     pub num_epochs: usize,
     #[config(default = 64)]
@@ -205,7 +205,7 @@ pub fn train<B: AutodiffBackend>(
     type C2<B> =
         BinaryClassificationOutput<<B as AutodiffBackend>::InnerBackend>;
 
-    type Opt<B> = OptimizerAdaptor<burn::optim::Adam, TwinModel<B>, B>;
+    type Opt<B> = OptimizerAdaptor<burn::optim::RmsProp, TwinModel<B>, B>;
     type Model<B> = TwinModel<B>;
 
     type Builder<B> = LearnerBuilder<B, C1<B>, C2<B>, Model<B>, Opt<B>, f64>;
@@ -301,7 +301,7 @@ pub fn guess<B: Backend>(
     );
 
     let left = ImageFolderDataset::new_classification(
-        "../handwritten-signatures-ver1/png/real",
+        "../handwritten-signatures-ver1/png-2025_05_18-220x155/real",
     )
     .unwrap_or_else(|_| {
         panic!(
@@ -311,7 +311,7 @@ pub fn guess<B: Backend>(
     })
     .iter()
     .map(|val| {
-        println!("Current image: {}", val.image_path);
+        println!("Current image LEFT: {}", val.image_path);
 
         TensorData::new(
             val.image
@@ -329,7 +329,16 @@ pub fn guess<B: Backend>(
     })
     .collect::<Vec<_>>();
 
-    let left = left.into_iter().cycle().take(len).collect::<Vec<_>>();
+    dbg!(&left);
+
+    let left = left
+        .into_iter()
+        .cycle()
+        .take(len)
+        .map(|val| norm.normalize(val))
+        .collect::<Vec<_>>();
+
+    dbg!(&right);
 
     let batch = CedarBatch {
         left: Tensor::stack(left, 0),

@@ -1,7 +1,7 @@
 use burn::{
     backend::Autodiff,
     data::dataset::{Dataset, vision::ImageFolderDataset},
-    optim::AdamConfig,
+    optim::{AdamConfig, RmsPropConfig},
     prelude::Backend,
     tensor::{Shape, Tensor, TensorData},
 };
@@ -19,7 +19,11 @@ fn mean_std() {
 
     let model = ModelConfig::new(512, 3, 3).init::<MyBackend>(&device);
     println!("{}", model);
-    let dataset = ImageFolderDataset::hs_train();
+    let dataset = ImageFolderDataset::new_classification(
+        "../handwritten-signatures-ver1/CEDAR_again/full_org",
+    )
+    .expect("Couldn't open the dataset");
+
     println!("{}", dataset.len());
 
     let ds_outer = dataset
@@ -78,9 +82,14 @@ fn learn() {
         "artifacts",
         model::TrainingConfig::new(
             ModelConfig::new(3, 1, 16).with_dropout(0.5),
-            AdamConfig::new(),
+            RmsPropConfig::new()
+                .with_momentum(0.8)
+                .with_weight_decay(Some(
+                    burn::optim::decay::WeightDecayConfig { penalty: 0.0005 },
+                )),
         )
-        .with_num_epochs(60),
+        .with_learning_rate(1e-4)
+        .with_num_epochs(40),
         &device,
     );
 }
@@ -96,7 +105,7 @@ fn guess() {
     model::guess::<MyBackend>(
         "artifacts",
         device,
-        "../handwritten-signatures-ver1/next-forge",
+        "../handwritten-signatures-ver1/png-2025_05_18-220x155/real",
         MEAN_DS,
         STDDEV_DS,
     );

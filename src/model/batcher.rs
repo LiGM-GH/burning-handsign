@@ -122,7 +122,7 @@ impl<B: Backend> Batcher<CedarItem, CedarBatch<B>> for HandsignBatcher<B> {
             .iter()
             .map(|val| {
                 TensorData::new(
-                    val.first
+                    val.left
                         .iter()
                         .map(|val| -> u8 { val.clone().try_into().unwrap() })
                         .collect::<Vec<_>>(),
@@ -144,7 +144,7 @@ impl<B: Backend> Batcher<CedarItem, CedarBatch<B>> for HandsignBatcher<B> {
             .iter()
             .map(|val| {
                 TensorData::new(
-                    val.second
+                    val.right
                         .iter()
                         .map(|val| -> u8 { val.clone().try_into().unwrap() })
                         .collect::<Vec<_>>(),

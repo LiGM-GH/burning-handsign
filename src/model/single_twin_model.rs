@@ -77,8 +77,8 @@ impl ModelConfig {
         ];
         const SIZE2: [usize; 3] = [SIZE1[0], SIZE1[1], SIZE1[2]];
         const SIZE3: [usize; 3] = [
-            SIZE2[0] / POOL3_STRIDE - POOL3_KERSIZE / 2,
-            SIZE2[1] / POOL3_STRIDE - POOL3_KERSIZE / 2,
+            (SIZE2[0] - POOL3_KERSIZE / 2) / POOL3_STRIDE,
+            (SIZE2[1] - POOL3_KERSIZE / 2) / POOL3_STRIDE,
             SIZE2[2],
         ];
         const SIZE4: [usize; 3] = [
@@ -104,14 +104,14 @@ impl ModelConfig {
             SIZE8[2],
         ];
         const SIZE10: [usize; 3] = [
-            SIZE9[0] / POOL10_STRIDE - POOL10_KERSIZE / 2,
-            SIZE9[1] / POOL10_STRIDE - POOL10_KERSIZE / 2,
+            (SIZE9[0] - POOL10_KERSIZE / 2) / POOL10_STRIDE,
+            (SIZE9[1] - POOL10_KERSIZE / 2) / POOL10_STRIDE,
             SIZE9[2],
         ];
         const SIZE11: [usize; 3] = [SIZE10[0], SIZE10[1], SIZE10[2]];
         const SIZE12: usize = SIZE11[0] * SIZE11[1] * SIZE11[2];
-        const SIZE13: usize = 8;
-        const SIZE14: usize = 4;
+        const SIZE13: usize = 1024;
+        const SIZE14: usize = 128;
         const FINAL_SIZE: usize = SIZE14;
 
         const LINEAR12: usize = SIZE12;
@@ -125,10 +125,13 @@ impl ModelConfig {
             )
             .with_stride([1, 1])
             .init(device),
+
             norm2: BatchNormConfig::new(CONV4).init(device),
+
             pool3: MaxPool2dConfig::new([3, 3])
                 .with_strides([POOL3_STRIDE, POOL3_STRIDE])
                 .init(),
+
             conv4: Conv2dConfig::new(
                 [CONV4, CONV8],
                 [CONV4_KERSIZE, CONV4_KERSIZE],
@@ -139,30 +142,45 @@ impl ModelConfig {
                 CONV4_PADDING,
             ))
             .init(device),
+
             norm5: BatchNormConfig::new(CONV8).init(device),
+
             pool6: MaxPool2dConfig::new([POOL6_KERSIZE, POOL6_KERSIZE])
                 .with_strides([POOL6_STRIDE, POOL6_STRIDE])
                 .init(),
+
             drop7: DropoutConfig::new(0.3).init(),
-            conv8: Conv2dConfig::new([CONV8, CONV8], [3, 3])
-                .with_stride([CONV8_STRIDE, CONV8_STRIDE])
-                .with_padding(nn::PaddingConfig2d::Explicit(
-                    CONV8_PADDING,
-                    CONV8_PADDING,
-                ))
-                .init(device),
-            conv9: Conv2dConfig::new([CONV8, CONV8], [3, 3])
-                .with_stride([CONV9_STRIDE, CONV9_STRIDE])
-                .with_padding(nn::PaddingConfig2d::Explicit(
-                    CONV9_PADDING,
-                    CONV9_PADDING,
-                ))
-                .init(device),
+
+            conv8: Conv2dConfig::new(
+                [CONV8, CONV8],
+                [CONV8_KERSIZE, CONV8_KERSIZE],
+            )
+            .with_stride([CONV8_STRIDE, CONV8_STRIDE])
+            .with_padding(nn::PaddingConfig2d::Explicit(
+                CONV8_PADDING,
+                CONV8_PADDING,
+            ))
+            .init(device),
+
+            conv9: Conv2dConfig::new(
+                [CONV8, CONV8],
+                [CONV9_KERSIZE, CONV9_KERSIZE],
+            )
+            .with_stride([CONV9_STRIDE, CONV9_STRIDE])
+            .with_padding(nn::PaddingConfig2d::Explicit(
+                CONV9_PADDING,
+                CONV9_PADDING,
+            ))
+            .init(device),
+
             pool10: MaxPool2dConfig::new([POOL10_KERSIZE, POOL10_KERSIZE])
                 .with_strides([POOL10_STRIDE, POOL10_STRIDE])
                 .init(),
+
             drop11: DropoutConfig::new(0.3).init(),
+
             linear12: LinearConfig::new(SIZE12, SIZE13).init(device),
+
             drop13: DropoutConfig::new(0.5).init(),
             linear14: LinearConfig::new(SIZE13, SIZE14).init(device),
         };
@@ -189,11 +207,15 @@ impl<B: Backend> SingleTwinModel<B> {
             .pipe(|x| dprint!(x))
             .pipe(|x| self.conv1.forward(x))
             .pipe(|x| dprint!(x))
+            .pipe(|x| self.activation.forward(x))
+            .pipe(|x| dprint!(x))
             .pipe(|x| self.norm2.forward(x))
             .pipe(|x| dprint!(x))
             .pipe(|x| self.pool3.forward(x))
             .pipe(|x| dprint!(x))
             .pipe(|x| self.conv4.forward(x))
+            .pipe(|x| dprint!(x))
+            .pipe(|x| self.activation.forward(x))
             .pipe(|x| dprint!(x))
             .pipe(|x| self.norm5.forward(x))
             .pipe(|x| dprint!(x))
@@ -203,7 +225,11 @@ impl<B: Backend> SingleTwinModel<B> {
             .pipe(|x| dprint!(x))
             .pipe(|x| self.conv8.forward(x))
             .pipe(|x| dprint!(x))
+            .pipe(|x| self.activation.forward(x))
+            .pipe(|x| dprint!(x))
             .pipe(|x| self.conv9.forward(x))
+            .pipe(|x| dprint!(x))
+            .pipe(|x| self.activation.forward(x))
             .pipe(|x| dprint!(x))
             .pipe(|x| self.pool10.forward(x))
             .pipe(|x| dprint!(x))
@@ -213,9 +239,13 @@ impl<B: Backend> SingleTwinModel<B> {
             .pipe(|x| dprint!(x))
             .pipe(|x| self.linear12.forward(x))
             .pipe(|x| dprint!(x))
+            .pipe(|x| self.activation.forward(x))
+            .pipe(|x| dprint!(x))
             .pipe(|x| self.drop13.forward(x))
             .pipe(|x| dprint!(x))
             .pipe(|x| self.linear14.forward(x))
+            .pipe(|x| dprint!(x))
+            .pipe(|x| self.activation.forward(x))
             .pipe(|x| dprint!(x));
 
         result

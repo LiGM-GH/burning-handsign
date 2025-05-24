@@ -5,7 +5,6 @@ default:
 # Model generation
 learn: check
   cargo run --release learn
-  less ./artifacts/experiment.log
 
 # Mean and std generation
 mean: check

@@ -2,13 +2,14 @@ use burn::data::dataset::{
     Dataset,
     vision::{ImageFolderDataset, PixelDepth},
 };
-use rand::{Rng, distr::Bernoulli};
+use itertools::Itertools;
+use rand::{Rng, distr::Bernoulli, seq::SliceRandom};
 
 const TEST_PATH: &str = "../handwritten-signatures-ver1/png/";
 const TRAIN_PATH: &str = "../handwritten-signatures-ver1/png/";
 
-pub const IMAGE_LENGTH: usize = 600;
-pub const IMAGE_HEIGHT: usize = 600;
+pub const IMAGE_LENGTH: usize = 220;
+pub const IMAGE_HEIGHT: usize = 155;
 pub const IMAGE_DEPTH: usize = 1;
 
 pub trait HandsignDataset {
@@ -28,8 +29,8 @@ impl HandsignDataset for ImageFolderDataset {
 
 #[derive(Clone)]
 pub struct CedarItem {
-    pub first: Vec<PixelDepth>,
-    pub second: Vec<PixelDepth>,
+    pub left: Vec<PixelDepth>,
+    pub right: Vec<PixelDepth>,
     pub is_ok: bool,
 }
 
@@ -59,33 +60,91 @@ impl Dataset<CedarItem> for CedarDataset {
 
 impl HandsignDataset for CedarDataset {
     fn hs_test() -> Self {
-        let rng = rand::rng();
+        let mut rng = rand::rng();
+        let orig_path = "/home/gregory/Documents/mpei/khorev-handsign-login/handwritten-signatures-ver1/CEDAR_again/full_org";
+
+        let left_seq = std::fs::read_dir(orig_path)
+            .expect("Couldn't read dataset dir")
+            .flatten()
+            .sorted_by_key(|val| val.file_name())
+            .take(960)
+            .chunks(24)
+            .into_iter()
+            .flat_map(|val| {
+                let mut val = val
+                    .map(|entry| {
+                        Ok::<_, std::io::Error>((
+                            entry.file_type()?,
+                            entry.path(),
+                        ))
+                    })
+                    .map(|val| val.expect("Couldn't get file type"))
+                    .map(|(ty, path)| ty.is_file().then_some(path))
+                    .map(|val| dbg!(val.expect("val isn't file")))
+                    .filter(|thing| {
+                        thing.extension().and_then(|val| val.to_str())
+                            == Some("png")
+                    })
+                    .collect::<Vec<_>>();
+
+                val.shuffle(&mut rng);
+
+                println!("Images in a single batch: {:#?}", val);
+
+                val
+            })
+            .map(image::open)
+            .map(|val| val.expect("Image couldn't open this"))
+            .map(|image| {
+                image
+                    .into_luma8()
+                    .iter()
+                    .map(|px| PixelDepth::U8(*px))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+
+        let orig_chunks = std::fs::read_dir(orig_path)
+            .expect("Couldn't read dataset dir")
+            .flatten()
+            .sorted_by_key(|val| val.file_name())
+            .take(960)
+            .chunks(24);
+
+        let orig = orig_chunks
+            .into_iter()
+            .flat_map(|val| {
+                let val = val
+                    .map(|entry| {
+                        Ok::<_, std::io::Error>((
+                            entry.file_type()?,
+                            entry.path(),
+                        ))
+                    })
+                    .map(|val| val.expect("Couldn't get file type"))
+                    .map(|(ty, path)| ty.is_file().then_some(path))
+                    .map(|val| dbg!(val.expect("val isn't file")))
+                    .filter(|thing| {
+                        thing.extension().and_then(|val| val.to_str())
+                            == Some("png")
+                    })
+                    .collect::<Vec<_>>();
+
+                val
+            })
+            .collect::<Vec<_>>();
+
+        let forge_path = "/home/gregory/Documents/mpei/khorev-handsign-login/handwritten-signatures-ver1/CEDAR_again/full_forg";
+
         let seq = rng.sample_iter(
             Bernoulli::new(0.5).expect("Couldn't create Bernoulli"),
         );
 
-        let orig_path = "/home/gregory/Documents/mpei/khorev-handsign-login/handwritten-signatures-ver1/CEDAR_again/full_org";
-
-        let orig = std::fs::read_dir(orig_path)
-            .expect("Couldn't read dataset dir")
-            .flatten()
-            .take(100)
-            .map(|entry| {
-                Ok::<_, std::io::Error>((entry.file_type()?, entry.path()))
-            })
-            .map(|val| val.expect("Couldn't get file type"))
-            .map(|(ty, path)| ty.is_file().then_some(path))
-            .map(|val| dbg!(val.expect("val isn't file")))
-            .filter(|thing| {
-                thing.extension().and_then(|val| val.to_str()) == Some("png")
-            });
-
-        let forge_path = "/home/gregory/Documents/mpei/khorev-handsign-login/handwritten-signatures-ver1/CEDAR_again/full_forg";
-
         let forge = std::fs::read_dir(forge_path)
             .expect("Couldn't read dataset dir")
             .flatten()
-            .take(100)
+            .sorted_by_key(|val| val.file_name())
+            .take(960)
             .map(|entry| {
                 Ok::<_, std::io::Error>((entry.file_type()?, entry.path()))
             })
@@ -96,16 +155,17 @@ impl HandsignDataset for CedarDataset {
                 thing.extension().and_then(|val| val.to_str()) == Some("png")
             });
 
-        let result =
-            orig.zip(forge)
-                .zip(seq)
-                .map(|((first, second), get_original)| {
-                    if get_original {
-                        (first, true)
-                    } else {
-                        (second, false)
-                    }
-                });
+        let result = orig.into_iter().zip(forge).zip(seq).map(
+            |((first, second), get_original)| {
+                println!("first: {:?}, second: {:?}", first, second);
+
+                if get_original {
+                    (first, true)
+                } else {
+                    (second, false)
+                }
+            },
+        );
 
         let right_seq = result
             .map(|(image, is_ok)| (image::open(image), is_ok))
@@ -122,36 +182,10 @@ impl HandsignDataset for CedarDataset {
             })
             .collect::<Vec<_>>();
 
-        let left_seq = std::fs::read_dir(orig_path)
-            .expect("Couldn't read dataset dir")
-            .flatten()
-            .take(100)
-            .map(|entry| {
-                Ok::<_, std::io::Error>((entry.file_type()?, entry.path()))
-            })
-            .map(|val| val.expect("Couldn't get file type"))
-            .map(|(ty, path)| ty.is_file().then_some(path))
-            .map(|val| dbg!(val.expect("val isn't file")))
-            .filter(|thing| {
-                thing.extension().and_then(|val| val.to_str()) == Some("png")
-            })
-            .map(image::open)
-            .map(|val| val.expect("Image couldn't open this"))
-            .map(|image| {
-                image
-                    .into_luma8()
-                    .iter()
-                    .map(|px| PixelDepth::U8(*px))
-                    .collect::<Vec<_>>()
-            });
-
         let pictures = left_seq
+            .into_iter()
             .zip(right_seq)
-            .map(|(first, (second, is_ok))| CedarItem {
-                first,
-                second,
-                is_ok,
-            })
+            .map(|(left, (right, is_ok))| CedarItem { left, right, is_ok })
             .collect();
 
         Self { pictures }
