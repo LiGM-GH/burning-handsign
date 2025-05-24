@@ -41,8 +41,7 @@ pub struct ModelConfig {
 
 #[derive(Module, Debug)]
 pub struct TwinModel<B: Backend> {
-    left: SingleTwinModel<B>,
-    right: SingleTwinModel<B>,
+    inner_model: SingleTwinModel<B>,
 }
 
 impl<B: Backend> TwinModel<B> {
@@ -51,8 +50,8 @@ impl<B: Backend> TwinModel<B> {
         left: Tensor<B, 4>,
         right: Tensor<B, 4>,
     ) -> (Tensor<B, 2>, Tensor<B, 2>) {
-        let left_result = self.left.forward(left);
-        let right_result = self.right.forward(right);
+        let left_result = self.inner_model.forward(left);
+        let right_result = self.inner_model.forward(right);
         (left_result, right_result)
     }
 
@@ -97,7 +96,7 @@ impl<B: Backend> TwinModel<B> {
 
 impl ModelConfig {
     pub fn init<B: Backend>(&self, device: &B::Device) -> TwinModel<B> {
-        let left = single_twin_model::ModelConfig::new(
+        let inner_model = single_twin_model::ModelConfig::new(
             self.hidden_size,
             self.conv1_chans,
             self.conv2_chans,
@@ -105,15 +104,7 @@ impl ModelConfig {
         .with_dropout(self.dropout)
         .init(device);
 
-        let right = single_twin_model::ModelConfig::new(
-            self.hidden_size,
-            self.conv1_chans,
-            self.conv2_chans,
-        )
-        .with_dropout(self.dropout)
-        .init(device);
-
-        TwinModel { left, right }
+        TwinModel { inner_model }
     }
 }
 
@@ -301,7 +292,7 @@ pub fn guess<B: Backend>(
     );
 
     let left = ImageFolderDataset::new_classification(
-        "../handwritten-signatures-ver1/png-2025_05_18-220x155/real",
+        "../handwritten-signatures-ver1/png-220x155/real",
     )
     .unwrap_or_else(|_| {
         panic!(

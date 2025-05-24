@@ -89,13 +89,13 @@ fn learn() {
                 )),
         )
         .with_learning_rate(1e-4)
-        .with_num_epochs(40),
+        .with_num_epochs(20),
         &device,
     );
 }
 
-const MEAN_DS: f64 = 8.853009;
-const STDDEV_DS: f64 = 24.0;
+const MEAN_DS: f64 = 1240.1079;
+const STDDEV_DS: f64 = 47921.824;
 
 fn guess() {
     type MyBackend = burn::backend::LibTorch;
@@ -105,7 +105,7 @@ fn guess() {
     model::guess::<MyBackend>(
         "artifacts",
         device,
-        "../handwritten-signatures-ver1/png-2025_05_18-220x155/real",
+        "../handwritten-signatures-ver1/next-forge-220x155",
         MEAN_DS,
         STDDEV_DS,
     );
