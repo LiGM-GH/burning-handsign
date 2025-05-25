@@ -15,7 +15,6 @@ appenders:
 root:
   level: debug
   appenders:
-    - stdout
     - main_logfile
 
 loggers:

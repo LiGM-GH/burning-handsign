@@ -51,7 +51,7 @@ pub async fn model(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-        let result = file.write_all(&bytes).await.map_err(|err| {
+        file.write_all(&bytes).await.map_err(|err| {
             log::error!("Error while saving file: {:?}", err);
 
             StatusCode::INTERNAL_SERVER_ERROR

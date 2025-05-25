@@ -2,13 +2,16 @@
 default:
   just --list
 
+# Start the server
 serve: check
   cargo run serve
+
+# Learn and look at the logs
+fun: learn peek
 
 # Model generation
 learn: check
   cargo run --release learn
-  less ./artifacts/experiment.log
 
 # Mean and std generation
 mean: check
