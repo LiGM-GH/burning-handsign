@@ -1,34 +1,11 @@
-use std::marker::PhantomData;
-
-use burn::{
-    data::{
-        dataloader::{DataLoader, DataLoaderBuilder, batcher::Batcher},
-        dataset::vision::{ImageDatasetItem, ImageFolderDataset},
-    },
-    nn::{
-        Linear, LinearConfig, Relu,
-        conv::{Conv2d, Conv2dConfig},
-        loss::BinaryCrossEntropyLossConfig,
-        pool::{MaxPool2d, MaxPool2dConfig},
-    },
-    optim::AdamConfig,
-    prelude::*,
-    record::CompactRecorder,
-    tensor::backend::AutodiffBackend,
-    train::{
-        ClassificationOutput, Learner, LearnerBuilder, TrainOutput, TrainStep,
-        ValidStep,
-        metric::{AccuracyMetric, LossMetric},
-    },
-};
-use nn::loss::CrossEntropyLossConfig;
-use tap::{Pipe, Tap};
+use burn::prelude::*;
 
 pub struct Normalizer<B: Backend> {
     pub mean: Tensor<B, 3>,
     pub stddev: Tensor<B, 3>,
 }
 
+#[allow(unused)]
 impl<B: Backend> Normalizer<B> {
     pub fn new(
         device: &Device<B>,
@@ -43,11 +20,6 @@ impl<B: Backend> Normalizer<B> {
         let result = (input.clone() - self.mean.clone()) / self.stddev.clone();
 
         log::error!("This {} has been normalized to: {}", input, result);
-
-        // assert!(
-        //     !result.clone().abs().greater_elem(1.0).any().into_scalar(),
-        //     "All elements should be less than 1"
-        // );
 
         result
     }

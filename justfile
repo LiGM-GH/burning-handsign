@@ -2,6 +2,9 @@
 default:
   just --list
 
+serve: check
+  cargo run serve
+
 # Model generation
 learn: check
   cargo run --release learn
@@ -9,7 +12,7 @@ learn: check
 
 # Mean and std generation
 mean: check
-  cargo run --release mean_std
+  cargo run mean_std
 
 # Guess first picture in other dataset
 guess: check
@@ -23,7 +26,8 @@ reguess:
 # Run Rust pre-compilation check
 check:
   cargo check
+  gum confirm "Proceed?"
 
 # Look at the result of the previous run
 peek:
-  less ./artifacts/experiment.log
+  less ./log/main.log

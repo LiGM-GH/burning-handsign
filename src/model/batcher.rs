@@ -1,32 +1,10 @@
-use std::marker::PhantomData;
-
 use burn::{
-    data::{
-        dataloader::{DataLoader, DataLoaderBuilder, batcher::Batcher},
-        dataset::vision::{ImageDatasetItem, ImageFolderDataset},
-    },
-    nn::{
-        Linear, LinearConfig, Relu,
-        conv::{Conv2d, Conv2dConfig},
-        loss::BinaryCrossEntropyLossConfig,
-        pool::{MaxPool2d, MaxPool2dConfig},
-    },
-    optim::AdamConfig,
+    data::{dataloader::batcher::Batcher, dataset::vision::ImageDatasetItem},
     prelude::*,
-    record::CompactRecorder,
-    tensor::backend::AutodiffBackend,
-    train::{
-        ClassificationOutput, Learner, LearnerBuilder, TrainOutput, TrainStep,
-        ValidStep,
-        metric::{AccuracyMetric, LossMetric},
-    },
 };
-use nn::loss::CrossEntropyLossConfig;
-use tap::{Pipe, Tap};
 
-use crate::{
-    dataset::HandsignDataset,
-    model::{IMAGE_DEPTH, IMAGE_HEIGHT, IMAGE_LENGTH, normalizer::Normalizer},
+use crate::model::{
+    IMAGE_DEPTH, IMAGE_HEIGHT, IMAGE_LENGTH, normalizer::Normalizer,
 };
 
 #[derive(Debug, Clone)]
@@ -54,7 +32,7 @@ impl<B: Backend> Batcher<ImageDatasetItem, HandsignBatch<B>>
 
         let mut all_alike = true;
         let mut images_iter = items.iter();
-        let mut etalon = images_iter.next().unwrap();
+        let etalon = images_iter.next().unwrap();
 
         for image in images_iter {
             if image.image != etalon.image
@@ -113,10 +91,7 @@ impl<B: Backend> Batcher<ImageDatasetItem, HandsignBatch<B>>
         //     })
         //     .sqrt();
 
-        use crate::{
-            MEAN_DS,
-            STDDEV_DS,
-        };
+        use crate::{MEAN_DS, STDDEV_DS};
 
         // let that_mean = stddev.clone().max().into_scalar();
         // log::error!("STDDEV: {}", that_mean);

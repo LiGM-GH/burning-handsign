@@ -1,118 +1,27 @@
-#![allow(warnings)]
+use clap::Parser;
+use claps::Things;
+use dataset::mean_std;
+use log4rs::config::Deserializers;
+use model::{guess, learn};
+use server::serve;
 
-use burn::{
-    backend::Autodiff,
-    data::dataset::{Dataset, vision::ImageFolderDataset},
-    optim::AdamConfig,
-    prelude::Backend,
-    tensor::{Shape, Tensor, TensorData},
-};
-
-use dataset::HandsignDataset;
-use model::{IMAGE_DEPTH, IMAGE_HEIGHT, IMAGE_LENGTH, ModelConfig, train};
-
+mod claps;
 mod dataset;
 mod model;
-
-fn mean_std() {
-    type MyBackend = burn::backend::LibTorch;
-
-    let device = Default::default();
-
-    let model = ModelConfig::new(512, 3, 3).init::<MyBackend>(&device);
-    println!("{}", model);
-    let dataset = ImageFolderDataset::hs_train();
-    println!("{}", dataset.len());
-
-    let ds_outer = dataset
-        .iter()
-        .filter(|val| !val.image_path.contains("forge"))
-        .map(|val| {
-            TensorData::new(
-                val.image
-                    .iter()
-                    .map(|val| -> u8 { val.clone().try_into().unwrap() })
-                    .collect::<Vec<_>>(),
-                Shape::new([IMAGE_LENGTH, IMAGE_HEIGHT, IMAGE_DEPTH]),
-            )
-        })
-        .map(|data| Tensor::<MyBackend, 3>::from_data(data, &device) / 255)
-        .collect::<Vec<_>>();
-
-    let mean = ds_outer
-        .iter()
-        .cloned()
-        .reduce(|val1, val2| val1 + val2)
-        .unwrap();
-
-    println!(
-        "mean: {:?}",
-        mean.clone().mean().to_data().as_slice::<f32>().unwrap()[0]
-    );
-
-    let mean_shape = mean.shape();
-    let stddev = ds_outer
-        .iter()
-        .cloned()
-        .fold(Tensor::zeros(mean_shape, &device), |acc, val| {
-            let thing = val - mean.clone();
-            log::error!("STDDEV's STEP IS {}", thing);
-            acc + (thing).powi_scalar(2)
-        })
-        .sqrt();
-
-    let that_mean = stddev.clone().max().into_scalar();
-    log::error!("STDDEV: {}", that_mean);
-    let stddev = stddev.full_like(that_mean);
-
-    println!(
-        "stddev: {:?}",
-        stddev.clone().mean().to_data().as_slice::<f32>().unwrap()[0]
-    );
-}
-
-fn learn() {
-    type MyBackend = burn::backend::LibTorch;
-
-    let device = Default::default();
-
-    train::<Autodiff<MyBackend>>(
-        "artifacts",
-        model::TrainingConfig::new(
-            ModelConfig::new(3, 1, 16).with_dropout(0.5),
-            AdamConfig::new(),
-        )
-        .with_num_epochs(30),
-        &device,
-    );
-}
+mod server;
 
 const MEAN_DS: f64 = 8.853009;
 const STDDEV_DS: f64 = 24.0;
 
-fn guess() {
-    type MyBackend = burn::backend::LibTorch;
-
-    let device = <MyBackend as Backend>::Device::default();
-
-    model::guess::<MyBackend>(
-        "artifacts",
-        device,
-        "../handwritten-signatures-ver1/next-forge",
-        MEAN_DS,
-        STDDEV_DS,
-    );
-}
-
 fn main() {
-    let next = std::env::args().nth(1);
-    let next = next.as_deref().map(|val| val.trim());
-    println!("Input: {:?}", next);
+    log4rs::init_file("log4rs.yaml", Deserializers::new()).ok();
 
-    match next {
-        Some("mean_std") => mean_std(),
-        Some("learn") => learn(),
-        Some("guess") => guess(),
-        _ => println!("This doens't work that way"),
+    let args = Things::parse();
+
+    match args {
+        Things::Mean => mean_std(),
+        Things::Learn => learn(),
+        Things::Guess => guess(),
+        Things::Serve => serve(),
     }
 }

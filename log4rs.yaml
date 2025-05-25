@@ -1,0 +1,23 @@
+refresh_rate: 30 seconds
+appenders:
+  main_logfile:
+    kind: file
+    path: "log/main.log"
+    encoder:
+      kind: pattern
+      pattern: "{d} {l:<5} | {t:<30} - {m}{n}"
+  stdout:
+    kind: console
+    encoder:
+      kind: pattern
+      pattern: "{d} {h({l}):<5} | {t:<30} : {m}{n}"
+
+root:
+  level: debug
+  appenders:
+    - stdout
+    - main_logfile
+
+loggers:
+  burning_handsign:
+    level: trace

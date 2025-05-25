@@ -1,42 +1,40 @@
-use std::{marker::PhantomData, path::Path};
+use std::path::Path;
 
 use batcher::{HandsignBatch, HandsignBatcher};
 use burn::{
+    backend::Autodiff,
     data::{
-        dataloader::{DataLoader, DataLoaderBuilder, batcher::Batcher},
-        dataset::{
-            Dataset,
-            vision::{ImageDatasetItem, ImageFolderDataset},
-        },
+        dataloader::DataLoaderBuilder,
+        dataset::{Dataset, vision::ImageFolderDataset},
     },
     nn::{
         BatchNorm, BatchNormConfig, Dropout, DropoutConfig, Linear,
         LinearConfig, Relu,
         conv::{Conv2d, Conv2dConfig},
-        loss::{BinaryCrossEntropyLoss, BinaryCrossEntropyLossConfig},
+        loss::BinaryCrossEntropyLossConfig,
         pool::{MaxPool2d, MaxPool2dConfig},
     },
-    optim::AdamConfig,
+    optim::{AdamConfig, adaptor::OptimizerAdaptor},
     prelude::*,
     record::{CompactRecorder, Recorder},
-    tensor::{backend::AutodiffBackend, cast::ToElement, module::avg_pool2d},
+    tensor::{backend::AutodiffBackend, cast::ToElement},
     train::{
-        Learner, LearnerBuilder, TrainOutput, TrainStep, ValidStep,
-        metric::{AccuracyMetric, LossMetric},
+        LearnerBuilder, TrainOutput, TrainStep, ValidStep, metric::LossMetric,
     },
 };
 use metric::{
     BinaryClassificationOutput, TimesGuessedMetric, tensor_to_guesses,
 };
-use nn::loss::CrossEntropyLossConfig;
 use normalizer::Normalizer;
-use tap::{Pipe, Tap};
+use tap::Pipe;
 
-use crate::dataset::HandsignDataset;
+use crate::{dataset::HandsignDataset, MEAN_DS, STDDEV_DS};
 
 mod batcher;
 mod metric;
 mod normalizer;
+
+type MyBackend = burn::backend::LibTorch;
 
 pub const IMAGE_LENGTH: usize = 600;
 pub const IMAGE_HEIGHT: usize = 600;
@@ -78,6 +76,7 @@ pub struct ModelConfig {
 
 impl ModelConfig {
     /// Returns the initialized model.
+    #[allow(unused)]
     pub fn init<B: Backend>(&self, device: &B::Device) -> Model<B> {
         const CONV1: usize = 1;
         const CONV1_KERSIZE: usize = 11;
@@ -205,8 +204,6 @@ impl ModelConfig {
 
 impl<B: Backend> Model<B> {
     fn forward(&self, images: Tensor<B, 4>) -> Tensor<B, 1> {
-        let [batch_size, height, width, colors] = images.dims();
-
         macro_rules! dprint {
             ($x:ident) => {{
                 log::error!("line {} | FORWARD: {:?}", line!(), $x.dims());
@@ -347,14 +344,15 @@ pub fn train<B: AutodiffBackend>(
         .num_workers(config.num_workers)
         .build(ImageFolderDataset::hs_test());
 
-    let builder: LearnerBuilder<
-        B,
-        _,
-        BinaryClassificationOutput<_>,
-        Model<B>,
-        burn::optim::adaptor::OptimizerAdaptor<burn::optim::Adam, Model<B>, B>,
-        f64,
-    > = LearnerBuilder::new(artifact_dir)
+    type C1<B> = BinaryClassificationOutput<B>;
+    type C2<B> =
+        BinaryClassificationOutput<<B as AutodiffBackend>::InnerBackend>;
+
+    type Opt<B> = OptimizerAdaptor<burn::optim::Adam, Model<B>, B>;
+
+    type Builder<B> = LearnerBuilder<B, C1<B>, C2<B>, Model<B>, Opt<B>, f64>;
+
+    let builder: Builder<B> = LearnerBuilder::new(artifact_dir)
         .metric_train_numeric(TimesGuessedMetric::new())
         .metric_valid_numeric(TimesGuessedMetric::new())
         .metric_train_numeric(LossMetric::new())
@@ -365,7 +363,7 @@ pub fn train<B: AutodiffBackend>(
         .summary();
 
     let learner = builder.build(
-        config.model.init::<B>(&device),
+        config.model.init::<B>(device),
         config.optimizer.init(),
         config.learning_rate,
     );
@@ -377,7 +375,7 @@ pub fn train<B: AutodiffBackend>(
         .expect("Model should be saved successfully")
 }
 
-pub fn guess<B: Backend>(
+pub fn guess_inner<B: Backend>(
     artifact_dir: &str,
     device: B::Device,
     images_path: impl AsRef<Path>,
@@ -385,10 +383,12 @@ pub fn guess<B: Backend>(
     stddev: f64,
 ) {
     let images = ImageFolderDataset::new_classification(&images_path)
-        .expect(&format!(
-            "Dataset should exist  in path {}",
-            images_path.as_ref().to_string_lossy()
-        ))
+        .unwrap_or_else(|_| {
+            panic!(
+                "Dataset should exist  in path {}",
+                images_path.as_ref().to_string_lossy()
+            )
+        })
         .iter()
         .map(|val| {
             println!("Current image: {}", val.image_path);
@@ -465,5 +465,31 @@ pub fn guess<B: Backend>(
         guessed_part,
         len,
         guessed_part.to_i8() as f64 / len as f64 * 100.0,
+    );
+}
+
+pub fn learn() {
+    let device = Default::default();
+
+    train::<Autodiff<MyBackend>>(
+        "artifacts",
+        TrainingConfig::new(
+            ModelConfig::new(3, 1, 16).with_dropout(0.5),
+            AdamConfig::new(),
+        )
+        .with_num_epochs(30),
+        &device,
+    );
+}
+
+pub fn guess() {
+    let device = <MyBackend as Backend>::Device::default();
+
+    guess_inner::<MyBackend>(
+        "artifacts",
+        device,
+        "../handwritten-signatures-ver1/next-forge",
+        MEAN_DS,
+        STDDEV_DS,
     );
 }
