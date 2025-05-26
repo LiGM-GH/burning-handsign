@@ -1,38 +1,34 @@
-use burn::{data::dataset::{vision::ImageFolderDataset, Dataset}, tensor::{Shape, Tensor, TensorData}};
+use std::path::Path;
 
-use crate::model::{ModelConfig, IMAGE_DEPTH, IMAGE_HEIGHT, IMAGE_LENGTH};
+use burn::{
+    data::dataset::{Dataset, vision::ImageFolderDataset},
+    tensor::{Shape, Tensor, TensorData},
+};
 
-const TEST_PATH: &str  = "../handwritten-signatures-ver1/png/";
-const TRAIN_PATH: &str = "../handwritten-signatures-ver1/png/";
+use crate::model::{IMAGE_DEPTH, IMAGE_HEIGHT, IMAGE_LENGTH, ModelConfig};
 
 pub trait HandsignDataset {
-    fn hs_test() -> Self;
-    fn hs_train() -> Self;
+    fn hs_path(path: impl AsRef<Path>) -> Self;
 }
 
 impl HandsignDataset for ImageFolderDataset {
-    fn hs_test() -> Self {
-        Self::new_classification(TEST_PATH).unwrap()
-    }
-
-    fn hs_train() -> Self {
-        Self::new_classification(TRAIN_PATH).unwrap()
+    fn hs_path(path: impl AsRef<Path>) -> Self {
+        Self::new_classification(path).unwrap()
     }
 }
 
-pub fn mean_std() {
+pub fn mean_std(dataset_dir: &str) {
     type MyBackend = burn::backend::LibTorch;
 
     let device = Default::default();
 
     let model = ModelConfig::new(512, 3, 3).init::<MyBackend>(&device);
     println!("{}", model);
-    let dataset = ImageFolderDataset::hs_train();
+    let dataset = ImageFolderDataset::hs_path(dataset_dir);
     println!("{}", dataset.len());
 
     let ds_outer = dataset
         .iter()
-        .filter(|val| !val.image_path.contains("forge"))
         .map(|val| {
             TensorData::new(
                 val.image
@@ -76,4 +72,3 @@ pub fn mean_std() {
         stddev.clone().mean().to_data().as_slice::<f32>().unwrap()[0]
     );
 }
-

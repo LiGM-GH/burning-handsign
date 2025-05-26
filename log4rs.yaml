@@ -13,7 +13,7 @@ appenders:
       pattern: "{d} {h({l}):<5} | {t:<30} : {m}{n}"
 
 root:
-  level: debug
+  level: info
   appenders:
     - main_logfile
 

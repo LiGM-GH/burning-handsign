@@ -33,4 +33,4 @@ check:
 
 # Look at the result of the previous run
 peek:
-  less ./log/main.log
+  less -I ./log/main.log

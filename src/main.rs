@@ -19,8 +19,8 @@ fn main() {
     let args = Things::parse();
 
     match args {
-        Things::Mean => mean_std(),
-        Things::Learn => learn(),
+        Things::Mean => mean_std("../handwritten-signatures-ver1/png/"),
+        Things::Learn => learn("../handwritten-signatures-ver1/png/", "artifacts"),
         Things::Guess => guess(),
         Things::Serve => serve(),
     }

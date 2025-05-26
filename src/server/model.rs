@@ -1,22 +1,93 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use axum::{
-    http::StatusCode,
-    response::{IntoResponse, Redirect},
+    http::{Request, StatusCode},
+    response::IntoResponse,
 };
-use tokio::{fs::File, io::AsyncWriteExt};
+use tap::Tap;
+use tokio::{
+    fs::{DirEntry, File, ReadDir},
+    io::AsyncWriteExt,
+    process::Command,
+};
+use tower_http::services::ServeFile;
+
+use crate::model::learn;
+
+trait SpawnEach {
+    async fn spawn_each(
+        self,
+        cmd: impl FnMut(DirEntry) -> Command,
+    ) -> Result<(), StatusCode>;
+}
+
+impl SpawnEach for ReadDir {
+    async fn spawn_each(
+        mut self,
+        mut cmd: impl FnMut(DirEntry) -> Command,
+    ) -> Result<(), StatusCode> {
+        log::trace!("Enter");
+        let mut results = Vec::with_capacity(5);
+
+        let mut i = 0;
+
+        while let Ok(Some(entry)) = self.next_entry().await {
+            let mut command = cmd(entry);
+
+            log::trace!("Command: {:?}", command);
+
+            let result = command.spawn().map_err(|err| {
+                log::error!(
+                    "Couldn't spawn process for image preparation: {:?}",
+                    err
+                );
+
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+            results.push(result);
+            i += 1;
+        }
+
+        log::trace!("Middle: i = {i}");
+
+        for mut child in results {
+            let Ok(_) = child.wait().await else {
+                log::error!("Couldn't process some image");
+
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            };
+        }
+
+        log::trace!("End");
+
+        Ok(())
+    }
+}
 
 pub async fn model(
     mut images: axum::extract::Multipart,
 ) -> Result<impl IntoResponse, StatusCode> {
     let mut i = 0;
 
+    let mut hasher = DefaultHasher::new();
+
+    std::time::SystemTime::now().hash(&mut hasher);
+
+    let dirname = format!("user_files/{:x}", hasher.finish());
+
+    let Ok(_) = std::fs::create_dir(&dirname) else {
+        log::error!("Create dir failed");
+
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    };
+
     while let Ok(Some(image)) = images.next_field().await {
         log::trace!("Image {}: {:?}", i, image);
 
-        if image.content_type() != Some("image/png") {
-            return Err(StatusCode::UNPROCESSABLE_ENTITY);
-        }
+        let Some("image/png" | "image/jpg" | "image/jpeg") = image.content_type() else {
+            return Err(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        };
 
         let mut hasher = DefaultHasher::new();
 
@@ -24,13 +95,19 @@ pub async fn model(
 
         let name = image.file_name().unwrap_or("");
 
+        let name = match name.strip_suffix(".jpg") {
+            Some(val) => val,
+            None => name,
+        };
+
         let name = match name.strip_suffix(".png") {
             Some(val) => val,
             None => name,
         };
 
-        let full_fname =
-            format!("user_files/{:x}_{}.png", hasher.finish(), name);
+        let mut hasher = DefaultHasher::new();
+        name.hash(&mut hasher);
+        let full_fname = format!("{dirname}/{:x}.png", hasher.finish());
 
         log::trace!("Current filename: {}", full_fname);
 
@@ -57,8 +134,75 @@ pub async fn model(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
+        // Ok, so now that we have those files, we can teach the model on them and their forgeries
+
         i += 1;
     }
 
-    Ok(Redirect::to("/"))
+    if i < 5 {
+        return Err(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    let files = tokio::fs::read_dir(&dirname).await.map_err(|err| {
+        log::error!("Couldn't read dir {}: {}", dirname, err);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    files
+        .spawn_each(|entry| {
+            Command::new("scripts/prep.sh").tap_mut(|command| {
+                let fname = format!(
+                    "{dirname}/{}",
+                    entry.file_name().to_str().unwrap()
+                );
+                command.args([&fname, &fname]);
+            })
+        })
+        .await?;
+
+    log::error!("THIS IS STILL EXECUTED");
+
+    let files = tokio::fs::read_dir(&dirname).await.map_err(|err| {
+        log::error!("Couldn't read dir {}: {}", dirname, err);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    files
+        .spawn_each(|entry| {
+            Command::new("scripts/forge.sh").tap_mut(|command| {
+                let fname = format!(
+                    "{dirname}/{}",
+                    entry.file_name().to_str().unwrap()
+                );
+                let result_fname = format!(
+                    "{dirname}/forge_{}",
+                    entry.file_name().to_str().unwrap()
+                );
+                println!("Result fname: {result_fname}");
+                log::trace!("Result fname: {result_fname}");
+                command.args([&fname, &result_fname]);
+            })
+        })
+        .await?;
+
+    log::error!("THIS IS STILL EXECUTED 2");
+
+    let artifacts_dir = format!("artifacts_{}", dirname);
+    let artifacts_dir_clone = artifacts_dir.clone();
+
+    tokio::task::spawn(async move { learn(&dirname, &artifacts_dir_clone) })
+        .await
+        .map_err(|err| {
+            log::error!("Couldn't Tokio::join the learning: {:?}", err);
+
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    ServeFile::new(format!("{artifacts_dir}/model.mpk"))
+        .try_call(Request::new(""))
+        .await
+        .map_err(|err| {
+            log::error!("Couldn't get model file: {}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })
 }

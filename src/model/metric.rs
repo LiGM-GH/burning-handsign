@@ -86,13 +86,6 @@ impl<B: Backend> Metric for TimesGuessedMetric<B> {
             .powi_scalar(2)
             .sum();
 
-        log::info!(
-            "TimesGuessed: {}: {} whilst real data is {}",
-            real_times.clone().into_scalar(),
-            times.tensor,
-            times.targets
-        );
-
         let times = real_times
             .float()
             .div_scalar(times.targets.dims()[0] as f32)

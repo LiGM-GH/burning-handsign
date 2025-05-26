@@ -28,8 +28,6 @@ impl<B: Backend> Batcher<ImageDatasetItem, HandsignBatch<B>>
     for HandsignBatcher<B>
 {
     fn batch(&self, items: Vec<ImageDatasetItem>) -> HandsignBatch<B> {
-        log::error!("This is how much images there is: {:?}", items.len());
-
         let mut all_alike = true;
         let mut images_iter = items.iter();
         let etalon = images_iter.next().unwrap();
@@ -38,7 +36,6 @@ impl<B: Backend> Batcher<ImageDatasetItem, HandsignBatch<B>>
             if image.image != etalon.image
                 && image.image_path != etalon.image_path
             {
-                log::error!("Not all images are the same!");
                 all_alike = false;
                 break;
             }
@@ -51,8 +48,6 @@ impl<B: Backend> Batcher<ImageDatasetItem, HandsignBatch<B>>
         let images: Vec<Tensor<B, 3>> = items
             .iter()
             .map(|val| {
-                log::info!("Current image: {}", val.image_path);
-
                 TensorData::new(
                     val.image
                         .iter()
@@ -64,38 +59,11 @@ impl<B: Backend> Batcher<ImageDatasetItem, HandsignBatch<B>>
             .map(|data| Tensor::<B, 3>::from_data(data, &self.device) / 255)
             .map(|tensor| {
                 let tensor = tensor.swap_dims(0, 2).swap_dims(1, 2);
-                log::error!("These are new dims: {:?}", tensor.dims());
                 tensor
             })
             .collect::<Vec<_>>();
 
-        log::error!("Images: {:?}", images);
-
-        // let mean = images
-        //     .iter()
-        //     .cloned()
-        //     .reduce(|l, r| l + r)
-        //     .unwrap()
-        //     .div_scalar(items.len() as f64);
-
-        // log::error!("Mean: {}", mean);
-
-        // let mean_shape = mean.shape();
-        // let stddev = images
-        //     .iter()
-        //     .cloned()
-        //     .fold(Tensor::zeros(mean_shape, &self.device), |acc, val| {
-        //         let thing = val - mean.clone();
-        //         log::error!("STDDEV's STEP IS {}", thing);
-        //         acc + (thing).powi_scalar(2)
-        //     })
-        //     .sqrt();
-
         use crate::{MEAN_DS, STDDEV_DS};
-
-        // let that_mean = stddev.clone().max().into_scalar();
-        // log::error!("STDDEV: {}", that_mean);
-        // let stddev = stddev.full_like(that_mean);
 
         let targets = items
             .iter()
@@ -103,7 +71,7 @@ impl<B: Backend> Batcher<ImageDatasetItem, HandsignBatch<B>>
                 let is_forge =
                     val.image_path.find("forge").map(|_| 1).unwrap_or(0);
 
-                log::info!("Image {} is forged: {}", val.image_path, is_forge);
+                // log::info!("Image {} is forged: {}", val.image_path, is_forge);
 
                 Tensor::from_data([is_forge.elem::<B::IntElem>()], &self.device)
             })
@@ -123,11 +91,8 @@ impl<B: Backend> Batcher<ImageDatasetItem, HandsignBatch<B>>
             .map(|img| norm.normalize(img))
             .collect::<Vec<_>>();
 
-        log::info!("images.first(): {}", images.first().unwrap());
         let images: Tensor<B, 4> = Tensor::stack(images, 0).detach();
-        log::info!("Images: {}", images);
         let targets = Tensor::cat(targets, 0);
-        log::info!("Targets: {}", targets);
 
         HandsignBatch { images, targets }
     }

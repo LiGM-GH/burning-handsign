@@ -15,6 +15,7 @@ pub async fn serve() {
     let app = Router::new()
         .route("/", get(get_view))
         .route("/static/main.js", get(get_js))
+        .route("/static/main.css", get(get_css))
         .route("/model", post(model));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
@@ -52,6 +53,16 @@ async fn get_js() -> Result<impl IntoResponse, StatusCode> {
     log::trace!("GET::JS");
 
     let mut file = tower_http::services::ServeFile::new("static/main.js");
+
+    file.try_call(Request::new(""))
+        .await
+        .map_err(|_| StatusCode::BAD_REQUEST)
+}
+
+async fn get_css() -> Result<impl IntoResponse, StatusCode> {
+    log::trace!("GET::CSS");
+
+    let mut file = tower_http::services::ServeFile::new("static/main.css");
 
     file.try_call(Request::new(""))
         .await

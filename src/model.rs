@@ -28,7 +28,7 @@ use metric::{
 use normalizer::Normalizer;
 use tap::Pipe;
 
-use crate::{dataset::HandsignDataset, MEAN_DS, STDDEV_DS};
+use crate::{MEAN_DS, STDDEV_DS, dataset::HandsignDataset};
 
 mod batcher;
 mod metric;
@@ -317,6 +317,7 @@ fn create_artifact_dir(artifact_dir: &str) {
 }
 
 pub fn train<B: AutodiffBackend>(
+    dataset_dir: &str,
     artifact_dir: &str,
     config: TrainingConfig,
     device: &B::Device,
@@ -336,13 +337,13 @@ pub fn train<B: AutodiffBackend>(
         .batch_size(config.batch_size)
         .shuffle(config.seed)
         .num_workers(config.num_workers)
-        .build(ImageFolderDataset::hs_train());
+        .build(ImageFolderDataset::hs_path(dataset_dir));
 
     let dataloader_test = DataLoaderBuilder::new(batcher_valid)
         .batch_size(config.batch_size)
         .shuffle(config.seed)
         .num_workers(config.num_workers)
-        .build(ImageFolderDataset::hs_test());
+        .build(ImageFolderDataset::hs_path(dataset_dir));
 
     type C1<B> = BinaryClassificationOutput<B>;
     type C2<B> =
@@ -372,7 +373,7 @@ pub fn train<B: AutodiffBackend>(
 
     model_trained
         .save_file(format!("{artifact_dir}/model"), &CompactRecorder::new())
-        .expect("Model should be saved successfully")
+        .expect("Model should be saved successfully");
 }
 
 pub fn guess_inner<B: Backend>(
@@ -468,18 +469,19 @@ pub fn guess_inner<B: Backend>(
     );
 }
 
-pub fn learn() {
+pub fn learn(dataset_dir: &str, artifacts_dir: &str) {
     let device = Default::default();
 
     train::<Autodiff<MyBackend>>(
-        "artifacts",
+        dataset_dir,
+        artifacts_dir,
         TrainingConfig::new(
             ModelConfig::new(3, 1, 16).with_dropout(0.5),
             AdamConfig::new(),
         )
-        .with_num_epochs(30),
+        .with_num_epochs(40),
         &device,
-    );
+    )
 }
 
 pub fn guess() {

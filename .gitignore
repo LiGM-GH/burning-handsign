@@ -4,3 +4,4 @@ artifacts
 local_artifacts
 log
 user_files
+artifacts_user_files

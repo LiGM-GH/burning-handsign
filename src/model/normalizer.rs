@@ -12,16 +12,11 @@ impl<B: Backend> Normalizer<B> {
         mean: Tensor<B, 3>,
         stddev: Tensor<B, 3>,
     ) -> Self {
-        log::error!("Self's mean is {} and stddev is {}", mean, stddev);
         Self { mean, stddev }
     }
 
     pub fn normalize(&self, input: Tensor<B, 3>) -> Tensor<B, 3> {
-        let result = (input.clone() - self.mean.clone()) / self.stddev.clone();
-
-        log::error!("This {} has been normalized to: {}", input, result);
-
-        result
+        (input.clone() - self.mean.clone()) / self.stddev.clone()
     }
 
     pub fn to_device(&self, device: &B::Device) -> Self {
