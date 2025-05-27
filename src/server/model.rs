@@ -1,4 +1,7 @@
-use std::hash::{DefaultHasher, Hash, Hasher};
+use std::{
+    hash::{DefaultHasher, Hash, Hasher},
+    panic::catch_unwind,
+};
 
 use axum::{
     http::{Request, StatusCode},
@@ -85,7 +88,9 @@ pub async fn model(
     while let Ok(Some(image)) = images.next_field().await {
         log::trace!("Image {}: {:?}", i, image);
 
-        let Some("image/png" | "image/jpg" | "image/jpeg") = image.content_type() else {
+        let Some("image/png" | "image/jpg" | "image/jpeg") =
+            image.content_type()
+        else {
             return Err(StatusCode::UNSUPPORTED_MEDIA_TYPE);
         };
 
@@ -190,13 +195,20 @@ pub async fn model(
     let artifacts_dir = format!("artifacts_{}", dirname);
     let artifacts_dir_clone = artifacts_dir.clone();
 
-    tokio::task::spawn(async move { learn(&dirname, &artifacts_dir_clone) })
-        .await
-        .map_err(|err| {
-            log::error!("Couldn't Tokio::join the learning: {:?}", err);
+    tokio::task::spawn_blocking(move || {
+        catch_unwind(|| learn(&dirname, &artifacts_dir_clone))
+    })
+    .await
+    .map_err(|err| {
+        log::error!("Couldn't Tokio::join the learning: {:?}", err);
 
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?
+    .map_err(|err| {
+        log::error!("Couldn't complete the learning: {:?}", err);
+
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     ServeFile::new(format!("{artifacts_dir}/model.mpk"))
         .try_call(Request::new(""))

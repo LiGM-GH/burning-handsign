@@ -377,7 +377,8 @@ pub fn train<B: AutodiffBackend>(
 }
 
 pub fn guess_inner<B: Backend>(
-    artifact_dir: &str,
+    config_json_path: &str,
+    model_path: &str,
     device: B::Device,
     images_path: impl AsRef<Path>,
     mean: f64,
@@ -386,7 +387,7 @@ pub fn guess_inner<B: Backend>(
     let images = ImageFolderDataset::new_classification(&images_path)
         .unwrap_or_else(|_| {
             panic!(
-                "Dataset should exist  in path {}",
+                "Dataset should exist in path {}",
                 images_path.as_ref().to_string_lossy()
             )
         })
@@ -424,11 +425,11 @@ pub fn guess_inner<B: Backend>(
         .map(|val| norm.normalize(val))
         .collect::<Vec<_>>();
 
-    let config = TrainingConfig::load(format!("{artifact_dir}/config.json"))
-        .expect("Couldn't load config");
+    let config =
+        TrainingConfig::load(config_json_path).expect("Couldn't load config");
 
     let record = CompactRecorder::new()
-        .load(format!("{artifact_dir}/model").into(), &device)
+        .load(model_path.into(), &device)
         .expect("Trained model should exist; run train first");
 
     let model = config.model.init::<B>(&device).load_record(record);
@@ -484,13 +485,14 @@ pub fn learn(dataset_dir: &str, artifacts_dir: &str) {
     )
 }
 
-pub fn guess() {
+pub fn guess(path: &str, model_path: &str) {
     let device = <MyBackend as Backend>::Device::default();
 
     guess_inner::<MyBackend>(
-        "artifacts",
+        "artifacts/config.json",
+        model_path,
         device,
-        "../handwritten-signatures-ver1/next-forge",
+        path,
         MEAN_DS,
         STDDEV_DS,
     );

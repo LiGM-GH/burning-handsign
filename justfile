@@ -3,22 +3,22 @@ default:
   just --list
 
 # Start the server
-serve: check
+serve: pre-run
   cargo run serve
 
 # Learn and look at the logs
 fun: learn peek
 
 # Model generation
-learn: check
+learn: pre-run
   cargo run --release learn
 
 # Mean and std generation
-mean: check
+mean: pre-run
   cargo run mean_std
 
 # Guess first picture in other dataset
-guess: check
+guess: pre-run
   cargo run --release guess
 
 # Learn and then guess
@@ -29,6 +29,9 @@ reguess:
 # Run Rust pre-compilation check
 check:
   cargo check
+
+[private]
+pre-run: check
   gum confirm "Proceed?"
 
 # Look at the result of the previous run
