@@ -53,19 +53,20 @@ impl ModelConfig {
         const CONV1_KERSIZE: usize = 11;
         const POOL3_STRIDE: usize = 2;
         const POOL3_KERSIZE: usize = 3;
-        const CONV4: usize = 8;
+        const CONV4: usize = 64;
         const CONV4_KERSIZE: usize = 5;
         const CONV4_PADDING: usize = 2;
         const POOL6_KERSIZE: usize = 3;
         const POOL6_STRIDE: usize = 2;
-        const CONV8: usize = 16;
+        const CONV8: usize = 64;
         const CONV8_KERSIZE: usize = 3;
         const CONV8_PADDING: usize = 1;
         const CONV8_STRIDE: usize = 1;
-        const CONV9: usize = 16;
+        const CONV9: usize = 64;
         const CONV9_PADDING: usize = 1;
         const CONV9_STRIDE: usize = 1;
         const CONV9_KERSIZE: usize = 3;
+        const CONV9_OUT: usize = 32;
         const POOL10_KERSIZE: usize = 3;
         const POOL10_STRIDE: usize = 2;
 
@@ -106,7 +107,7 @@ impl ModelConfig {
         const SIZE10: [usize; 3] = [
             (SIZE9[0] - POOL10_KERSIZE / 2) / POOL10_STRIDE,
             (SIZE9[1] - POOL10_KERSIZE / 2) / POOL10_STRIDE,
-            SIZE9[2],
+            CONV9_OUT,
         ];
         const SIZE11: [usize; 3] = [SIZE10[0], SIZE10[1], SIZE10[2]];
         const SIZE12: usize = SIZE11[0] * SIZE11[1] * SIZE11[2];
@@ -152,7 +153,7 @@ impl ModelConfig {
             drop7: DropoutConfig::new(0.3).init(),
 
             conv8: Conv2dConfig::new(
-                [CONV8, CONV8],
+                [CONV8, CONV9],
                 [CONV8_KERSIZE, CONV8_KERSIZE],
             )
             .with_stride([CONV8_STRIDE, CONV8_STRIDE])
@@ -163,7 +164,7 @@ impl ModelConfig {
             .init(device),
 
             conv9: Conv2dConfig::new(
-                [CONV8, CONV8],
+                [CONV9, CONV9_OUT],
                 [CONV9_KERSIZE, CONV9_KERSIZE],
             )
             .with_stride([CONV9_STRIDE, CONV9_STRIDE])

@@ -145,7 +145,7 @@ impl<B: Backend> ValidStep<CedarBatch<B>, BinaryClassificationOutput<B>>
 #[derive(Config)]
 pub struct TrainingConfig {
     pub model: ModelConfig,
-    pub optimizer: RmsPropConfig,
+    pub optimizer: AdamConfig,
     #[config(default = 10)]
     pub num_epochs: usize,
     #[config(default = 64)]
@@ -196,7 +196,7 @@ pub fn train<B: AutodiffBackend>(
     type C2<B> =
         BinaryClassificationOutput<<B as AutodiffBackend>::InnerBackend>;
 
-    type Opt<B> = OptimizerAdaptor<burn::optim::RmsProp, TwinModel<B>, B>;
+    type Opt<B> = OptimizerAdaptor<burn::optim::Adam, TwinModel<B>, B>;
     type Model<B> = TwinModel<B>;
 
     type Builder<B> = LearnerBuilder<B, C1<B>, C2<B>, Model<B>, Opt<B>, f64>;
@@ -334,7 +334,7 @@ pub fn guess<B: Backend>(
     let batch = CedarBatch {
         left: Tensor::stack(left, 0),
         right: Tensor::stack(right, 0),
-        targets,
+        targets: targets.clone(),
     };
 
     println!("batch: {:?}", batch);
@@ -348,6 +348,22 @@ pub fn guess<B: Backend>(
 
     println!("Guesses: {}", dw);
 
+    const ALPHA: f64 = 0.5;
+    const BETA: f64 = 0.5;
+    const M: f64 = 1.0;
+
+    let loss = dw_square
+        .mul_scalar(ALPHA)
+        .mul(targets.clone().sub_scalar(1).neg().float())
+        .add(
+            dw.sub_scalar(M)
+                .neg()
+                .clamp_min(0)
+                .powi_scalar(2)
+                .mul(targets.clone().float())
+                .mul_scalar(BETA),
+        );
+
     let guessed_part = guesses.round().int().clamp(0, 1).sum().into_scalar();
 
     println!(
@@ -356,4 +372,6 @@ pub fn guess<B: Backend>(
         len,
         guessed_part.to_i8() as f64 / len as f64 * 100.0,
     );
+
+    println!("Loss: {:?}", loss.to_data().to_vec::<f32>())
 }

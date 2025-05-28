@@ -2,3 +2,6 @@
 models
 artifacts
 local_artifacts
+artifacts_user_files
+log
+user_files

@@ -82,11 +82,7 @@ fn learn() {
         "artifacts",
         model::TrainingConfig::new(
             ModelConfig::new(3, 1, 16).with_dropout(0.5),
-            RmsPropConfig::new()
-                .with_momentum(0.8)
-                .with_weight_decay(Some(
-                    burn::optim::decay::WeightDecayConfig { penalty: 0.0005 },
-                )),
+            AdamConfig::new(),
         )
         .with_learning_rate(1e-4)
         .with_num_epochs(20),
