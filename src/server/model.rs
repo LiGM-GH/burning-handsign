@@ -17,6 +17,9 @@ use tower_http::services::ServeFile;
 
 use crate::model::learn;
 
+const NUMBER_OF_SAMPLES: usize = 10;
+const FORGE_METHOD_NUMBER: usize = 5;
+
 trait SpawnEach {
     async fn spawn_each(
         self,
@@ -30,7 +33,7 @@ impl SpawnEach for ReadDir {
         mut cmd: impl FnMut(DirEntry) -> Command,
     ) -> Result<(), StatusCode> {
         log::trace!("Enter");
-        let mut results = Vec::with_capacity(5);
+        let mut results = Vec::with_capacity(NUMBER_OF_SAMPLES);
 
         let mut i = 0;
 
@@ -71,8 +74,6 @@ impl SpawnEach for ReadDir {
 pub async fn model(
     mut images: axum::extract::Multipart,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let mut i = 0;
-
     let mut hasher = DefaultHasher::new();
 
     std::time::SystemTime::now().hash(&mut hasher);
@@ -85,67 +86,73 @@ pub async fn model(
         return Err(StatusCode::INTERNAL_SERVER_ERROR);
     };
 
-    while let Ok(Some(image)) = images.next_field().await {
-        log::trace!("Image {}: {:?}", i, image);
+    {
+        let mut i = 0;
 
-        let Some("image/png" | "image/jpg" | "image/jpeg") =
-            image.content_type()
-        else {
-            return Err(StatusCode::UNSUPPORTED_MEDIA_TYPE);
-        };
+        while let Ok(Some(image)) = images.next_field().await {
+            log::trace!("Image {}: {:?}", i, image);
 
-        let mut hasher = DefaultHasher::new();
+            let Some("image/png" | "image/jpg" | "image/jpeg") =
+                image.content_type()
+            else {
+                return Err(StatusCode::UNSUPPORTED_MEDIA_TYPE);
+            };
 
-        std::time::SystemTime::now().hash(&mut hasher);
+            let mut hasher = DefaultHasher::new();
 
-        let name = image.file_name().unwrap_or("");
+            std::time::SystemTime::now().hash(&mut hasher);
 
-        let name = match name.strip_suffix(".jpg") {
-            Some(val) => val,
-            None => name,
-        };
+            let name = image.file_name().unwrap_or("");
 
-        let name = match name.strip_suffix(".png") {
-            Some(val) => val,
-            None => name,
-        };
+            let name = match name.strip_suffix(".jpg") {
+                Some(val) => val,
+                None => name,
+            };
 
-        let mut hasher = DefaultHasher::new();
-        name.hash(&mut hasher);
-        let full_fname = format!("{dirname}/{:x}.png", hasher.finish());
+            let name = match name.strip_suffix(".png") {
+                Some(val) => val,
+                None => name,
+            };
 
-        log::trace!("Current filename: {}", full_fname);
+            let mut hasher = DefaultHasher::new();
+            name.hash(&mut hasher);
+            let full_fname = format!("{dirname}/{:x}.png", hasher.finish());
 
-        let mut file = File::options()
-            .write(true)
-            .create_new(true)
-            .open(full_fname)
-            .await
-            .map_err(|err| {
-                log::error!("Error while creating file: {:?}", err);
+            log::trace!("Current filename: {}", full_fname);
+
+            let mut file = File::options()
+                .write(true)
+                .create_new(true)
+                .open(full_fname)
+                .await
+                .map_err(|err| {
+                    log::error!("Error while creating file: {:?}", err);
+
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
+
+            let bytes = image.bytes().await.map_err(|err| {
+                log::error!("Error while getting file: {:?}", err);
 
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
 
-        let bytes = image.bytes().await.map_err(|err| {
-            log::error!("Error while getting file: {:?}", err);
+            file.write_all(&bytes).await.map_err(|err| {
+                log::error!("Error while saving file: {:?}", err);
 
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
 
-        file.write_all(&bytes).await.map_err(|err| {
-            log::error!("Error while saving file: {:?}", err);
+            i += 1;
 
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+            if i >= NUMBER_OF_SAMPLES {
+                break;
+            }
+        }
 
-        // Ok, so now that we have those files, we can teach the model on them and their forgeries
-
-        i += 1;
-    }
-
-    if i < 5 {
-        return Err(StatusCode::UNPROCESSABLE_ENTITY);
+        if i < NUMBER_OF_SAMPLES {
+            return Err(StatusCode::UNPROCESSABLE_ENTITY);
+        }
     }
 
     let files = tokio::fs::read_dir(&dirname).await.map_err(|err| {
@@ -153,28 +160,18 @@ pub async fn model(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    files
-        .spawn_each(|entry| {
-            Command::new("scripts/prep.sh").tap_mut(|command| {
-                let fname = format!(
-                    "{dirname}/{}",
-                    entry.file_name().to_str().unwrap()
-                );
-                command.args([&fname, &fname]);
-            })
-        })
-        .await?;
+    {
+        let mut i = 0;
+        files
+            .spawn_each(|entry| {
+                let forge_name = format!("scripts/forge{i}.sh");
 
-    log::error!("THIS IS STILL EXECUTED");
+                i += 1;
 
-    let files = tokio::fs::read_dir(&dirname).await.map_err(|err| {
-        log::error!("Couldn't read dir {}: {}", dirname, err);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+                if i >= FORGE_METHOD_NUMBER {
+                    i = 0;
+                }
 
-    files
-        .spawn_each(|entry| {
-            Command::new("scripts/forge.sh").tap_mut(|command| {
                 let fname = format!(
                     "{dirname}/{}",
                     entry.file_name().to_str().unwrap()
@@ -183,9 +180,28 @@ pub async fn model(
                     "{dirname}/forge_{}",
                     entry.file_name().to_str().unwrap()
                 );
-                println!("Result fname: {result_fname}");
+
                 log::trace!("Result fname: {result_fname}");
-                command.args([&fname, &result_fname]);
+
+                Command::new(&forge_name).tap_mut(|command| {
+                    command.args([&fname, &result_fname]);
+                })
+            })
+            .await?;
+    }
+
+    let files = tokio::fs::read_dir(&dirname).await.map_err(|err| {
+        log::error!("Couldn't read dir {}: {}", dirname, err);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    files
+        .spawn_each(|entry| {
+            let fname =
+                format!("{dirname}/{}", entry.file_name().to_str().unwrap());
+
+            Command::new("scripts/prep.sh").tap_mut(|command| {
+                command.args([&fname, &fname]);
             })
         })
         .await?;

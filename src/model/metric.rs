@@ -66,7 +66,7 @@ pub struct TimesGuessedInput<B: Backend> {
 pub fn tensor_to_guesses<B: Backend>(
     tensor: Tensor<B, 1>,
 ) -> Tensor<B, 1, Int> {
-    tensor.greater_elem(GUESS_BORDER).bool_not().int()
+    tensor.greater_elem(GUESS_BORDER).int()
 }
 
 impl<B: Backend> Metric for TimesGuessedMetric<B> {

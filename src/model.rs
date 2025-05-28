@@ -384,13 +384,15 @@ pub fn guess_inner<B: Backend>(
     mean: f64,
     stddev: f64,
 ) {
-    let images = ImageFolderDataset::new_classification(&images_path)
+    let items = ImageFolderDataset::new_classification(&images_path)
         .unwrap_or_else(|_| {
             panic!(
                 "Dataset should exist in path {}",
                 images_path.as_ref().to_string_lossy()
             )
-        })
+        });
+
+    let images = items
         .iter()
         .map(|val| {
             println!("Current image: {}", val.image_path);
@@ -434,40 +436,65 @@ pub fn guess_inner<B: Backend>(
 
     let model = config.model.init::<B>(&device).load_record(record);
 
-    let len = images.len();
+    // let len = images.len();
 
-    let targets = Tensor::from_data(
-        TensorData::new(
-            std::iter::repeat_n(1, len).collect::<Vec<_>>(),
-            Shape::new([images.len()]),
-        ),
-        &device,
-    );
+    let targets = items
+        .iter()
+        .map(|val| {
+            let is_forge = val.image_path.find("forge").map(|_| 1).unwrap_or(0);
+            Tensor::from_data([is_forge.elem::<B::IntElem>()], &device)
+        })
+        .collect::<Vec<_>>();
 
     let batch = HandsignBatch {
         images: Tensor::stack(images, 0),
-        targets,
+        targets: Tensor::cat(targets, 0),
     };
 
     println!("batch: {:?}", batch);
 
     let output = model.forward(batch.images);
 
-    println!("output: {}", output);
+    println!("\noutput: {:?}\n", output.to_data().to_vec::<f32>());
 
     let guesses = tensor_to_guesses(output);
-    let guessed_part = guesses
-        .sub(batch.targets)
-        .powi_scalar(2)
-        .sum()
-        .into_scalar();
 
-    println!(
-        "Guessed {} times out of {}: {:.2}%",
-        guessed_part,
-        len,
-        guessed_part.to_i8() as f64 / len as f64 * 100.0,
-    );
+    println!("\nguesses: {:?}\n", guesses.to_data().to_vec::<i64>());
+
+    {
+        let guessed_part = guesses
+            .clone()
+            .sub_scalar(1)
+            .powi_scalar(2)
+            .mul(batch.targets.clone())
+            .sum()
+            .into_scalar();
+
+        let len = batch.targets.clone().sum().into_scalar().to_i32();
+
+        println!(
+            "FAR: {} times out of {}: {:.2}%",
+            guessed_part,
+            len,
+            guessed_part.to_i8() as f64 / len as f64 * 100.0,
+        );
+    }
+
+    {
+        let nontargets = batch.targets.clone().sub_scalar(1).powi_scalar(2);
+
+        let guessed_part =
+            guesses.clone().mul(nontargets.clone()).sum().into_scalar();
+
+        let len = nontargets.clone().sum().into_scalar().to_i32();
+
+        println!(
+            "FFR: {} times out of {}: {:.2}%",
+            guessed_part,
+            len,
+            guessed_part.to_i8() as f64 / len as f64 * 100.0
+        );
+    }
 }
 
 pub fn learn(dataset_dir: &str, artifacts_dir: &str) {
