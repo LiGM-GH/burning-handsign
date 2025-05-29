@@ -61,7 +61,7 @@ impl Dataset<CedarItem> for CedarDataset {
 impl HandsignDataset for CedarDataset {
     fn hs_test() -> Self {
         let mut rng = rand::rng();
-        let orig_path = "../handwritten-signatures-ver1/CEDAR_again/full_org";
+        let orig_path = "../handwritten-signatures-ver1/CEDAR_again_1/full_org";
 
         let left_seq = std::fs::read_dir(orig_path)
             .expect("Couldn't read dataset dir")
@@ -134,7 +134,7 @@ impl HandsignDataset for CedarDataset {
             })
             .collect::<Vec<_>>();
 
-        let forge_path = "../handwritten-signatures-ver1/CEDAR_again/full_forg";
+        let forge_path = "../handwritten-signatures-ver1/CEDAR_again_1/full_forg";
 
         let seq = rng.sample_iter(
             Bernoulli::new(0.5).expect("Couldn't create Bernoulli"),

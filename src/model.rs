@@ -82,7 +82,8 @@ impl<B: Backend> TwinModel<B> {
                     .powi_scalar(2)
                     .mul(targets.clone().float())
                     .mul_scalar(BETA),
-            );
+            )
+            .mean();
 
         log::error!("LOSS: {:?}", loss);
 
@@ -145,7 +146,7 @@ impl<B: Backend> ValidStep<CedarBatch<B>, BinaryClassificationOutput<B>>
 #[derive(Config)]
 pub struct TrainingConfig {
     pub model: ModelConfig,
-    pub optimizer: AdamConfig,
+    pub optimizer: RmsPropConfig,
     #[config(default = 10)]
     pub num_epochs: usize,
     #[config(default = 64)]
@@ -196,7 +197,7 @@ pub fn train<B: AutodiffBackend>(
     type C2<B> =
         BinaryClassificationOutput<<B as AutodiffBackend>::InnerBackend>;
 
-    type Opt<B> = OptimizerAdaptor<burn::optim::Adam, TwinModel<B>, B>;
+    type Opt<B> = OptimizerAdaptor<burn::optim::RmsProp, TwinModel<B>, B>;
     type Model<B> = TwinModel<B>;
 
     type Builder<B> = LearnerBuilder<B, C1<B>, C2<B>, Model<B>, Opt<B>, f64>;

@@ -20,7 +20,7 @@ fn mean_std() {
     let model = ModelConfig::new(512, 3, 3).init::<MyBackend>(&device);
     println!("{}", model);
     let dataset = ImageFolderDataset::new_classification(
-        "../handwritten-signatures-ver1/CEDAR_again/full_org",
+        "../handwritten-signatures-ver1/CEDAR_again_1/full_org",
     )
     .expect("Couldn't open the dataset");
 
@@ -82,7 +82,9 @@ fn learn() {
         "artifacts",
         model::TrainingConfig::new(
             ModelConfig::new(3, 1, 16).with_dropout(0.5),
-            AdamConfig::new(),
+            RmsPropConfig::new().with_momentum(0.8).with_weight_decay(Some(
+                burn::optim::decay::WeightDecayConfig { penalty: 0.0005 },
+            )),
         )
         .with_learning_rate(1e-4)
         .with_num_epochs(20),
@@ -90,8 +92,8 @@ fn learn() {
     );
 }
 
-const MEAN_DS: f64 = 1240.1079;
-const STDDEV_DS: f64 = 47921.824;
+const MEAN_DS: f64 = 99.72897;
+const STDDEV_DS: f64 = 16482.139;
 
 fn guess() {
     type MyBackend = burn::backend::LibTorch;
