@@ -10,7 +10,6 @@ use burn::{
         LrScheduler,
         exponential::{ExponentialLrScheduler, ExponentialLrSchedulerConfig},
     },
-    nn::loss::BinaryCrossEntropyLossConfig,
     optim::{AdamConfig, RmsPropConfig, adaptor::OptimizerAdaptor},
     prelude::*,
     record::{CompactRecorder, Recorder},
@@ -76,10 +75,19 @@ impl<B: Backend> TwinModel<B> {
         let dw = dw_square.clone().sqrt();
         let output = dw.clone();
 
-        let cross = BinaryCrossEntropyLossConfig::new()
-            .with_logits(true)
-            .init(&targets.device());
-        let loss = cross.forward(dw_square, targets.clone());
+        // dw² * α * (1 - y) + β * y * max { 0, (-1 * (dw - m)) }²
+        let loss = dw_square
+            .mul_scalar(ALPHA)
+            .mul(targets.clone().sub_scalar(1).neg().float())
+            .add(
+                dw.sub_scalar(M)
+                    .neg()
+                    .clamp_min(0)
+                    .powi_scalar(2)
+                    .mul(targets.clone().float())
+                    .mul_scalar(BETA),
+            )
+            .mean();
 
         log::error!("LOSS: {:?}", loss);
 

@@ -53,20 +53,20 @@ impl ModelConfig {
         const CONV1_KERSIZE: usize = 11;
         const POOL3_STRIDE: usize = 2;
         const POOL3_KERSIZE: usize = 3;
-        const CONV4: usize = 16;
+        const CONV4: usize = 96;
         const CONV4_KERSIZE: usize = 5;
         const CONV4_PADDING: usize = 2;
         const POOL6_KERSIZE: usize = 3;
         const POOL6_STRIDE: usize = 2;
-        const CONV8: usize = 32;
+        const CONV8: usize = 256;
         const CONV8_KERSIZE: usize = 3;
         const CONV8_PADDING: usize = 1;
         const CONV8_STRIDE: usize = 1;
-        const CONV9: usize = 64;
+        const CONV9: usize = 384;
         const CONV9_PADDING: usize = 1;
         const CONV9_STRIDE: usize = 1;
         const CONV9_KERSIZE: usize = 3;
-        const CONV9_OUT: usize = 128;
+        const CONV9_OUT: usize = 256;
         const POOL10_KERSIZE: usize = 3;
         const POOL10_STRIDE: usize = 2;
 
