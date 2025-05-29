@@ -167,10 +167,10 @@ impl HandsignDataset for CedarDataset {
             });
 
         let result = orig.into_iter().zip(forge).zip(seq).zip(left_paths).map(
-            |(((first, second), get_original), left)| {
+            |(((first, second), get_original), _left)| {
                 // println!(
                 //     "first: {:?}, second: {:?}, left: {:?}",
-                //     first, second, left
+                //     first, second, _left
                 // );
 
                 if get_original {

@@ -72,11 +72,11 @@ impl<B: Backend> TwinModel<B> {
         let dw = dw_square.clone().sqrt();
         let output = dw.clone();
 
-        // dw² * α * (1 - y) + max { 0, (-1 * (dw - m)) }²
+        // dw² * α * (1 - y) - β * y max { 0, (-1 * (dw - m)) }²
         let loss = dw_square
             .mul_scalar(ALPHA)
             .mul(targets.clone().sub_scalar(1).neg().float())
-            .add(
+            .sub(
                 dw.sub_scalar(M)
                     .neg()
                     .clamp_min(0)
