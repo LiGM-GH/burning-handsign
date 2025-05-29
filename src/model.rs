@@ -83,8 +83,7 @@ impl<B: Backend> TwinModel<B> {
                     .powi_scalar(2)
                     .mul(targets.clone().float())
                     .mul_scalar(BETA),
-            )
-            .mean();
+            );
 
         log::error!("LOSS: {:?}", loss);
 
