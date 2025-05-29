@@ -99,7 +99,7 @@ impl HandsignDataset for CedarDataset {
 
         let (left_paths, left_seq) = left_seq
             .into_iter()
-            .map(|val| (val, image::open(val)))
+            .map(|val| (val.clone(), image::open(val)))
             .map(|val| (val.0, val.1.expect("Image couldn't open this")))
             .map(|image| {
                 (
