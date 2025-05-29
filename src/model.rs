@@ -4,15 +4,18 @@ use batcher::{CedarBatch, HandsignBatch, HandsignBatcher};
 use burn::{
     data::{
         dataloader::DataLoaderBuilder,
-        dataset::{vision::ImageFolderDataset, Dataset},
+        dataset::{Dataset, vision::ImageFolderDataset},
     },
-    lr_scheduler::{exponential::{ExponentialLrScheduler, ExponentialLrSchedulerConfig}, LrScheduler},
-    optim::{adaptor::OptimizerAdaptor, AdamConfig, RmsPropConfig},
+    lr_scheduler::{
+        LrScheduler,
+        exponential::{ExponentialLrScheduler, ExponentialLrSchedulerConfig},
+    },
+    optim::{AdamConfig, RmsPropConfig, adaptor::OptimizerAdaptor},
     prelude::*,
     record::{CompactRecorder, Recorder},
     tensor::{backend::AutodiffBackend, cast::ToElement},
     train::{
-        metric::LossMetric, LearnerBuilder, TrainOutput, TrainStep, ValidStep
+        LearnerBuilder, TrainOutput, TrainStep, ValidStep, metric::LossMetric,
     },
 };
 use metric::{
@@ -72,11 +75,11 @@ impl<B: Backend> TwinModel<B> {
         let dw = dw_square.clone().sqrt();
         let output = dw.clone();
 
-        // dw² * α * (1 - y) - β * y max { 0, (-1 * (dw - m)) }²
+        // dw² * α * (1 - y) + β * y * max { 0, (-1 * (dw - m)) }²
         let loss = dw_square
             .mul_scalar(ALPHA)
             .mul(targets.clone().sub_scalar(1).neg().float())
-            .sub(
+            .add(
                 dw.sub_scalar(M)
                     .neg()
                     .clamp_min(0)
@@ -200,7 +203,14 @@ pub fn train<B: AutodiffBackend>(
     type Opt<B> = OptimizerAdaptor<burn::optim::RmsProp, TwinModel<B>, B>;
     type Model<B> = TwinModel<B>;
 
-    type Builder<B> = LearnerBuilder<B, C1<B>, C2<B>, Model<B>, Opt<B>, ExponentialLrScheduler>;
+    type Builder<B> = LearnerBuilder<
+        B,
+        C1<B>,
+        C2<B>,
+        Model<B>,
+        Opt<B>,
+        ExponentialLrScheduler,
+    >;
 
     let builder: Builder<B> = LearnerBuilder::new(artifact_dir)
         .metric_train_numeric(TimesGuessedMetric::new())
