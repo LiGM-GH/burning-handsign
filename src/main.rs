@@ -87,7 +87,7 @@ fn learn() {
             )),
         )
         .with_learning_rate(1e-4)
-        .with_num_epochs(20),
+        .with_num_epochs(100),
         &device,
     );
 }

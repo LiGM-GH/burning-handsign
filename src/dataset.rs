@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use burn::data::dataset::{
     Dataset,
     vision::{ImageFolderDataset, PixelDepth},
@@ -93,16 +95,24 @@ impl HandsignDataset for CedarDataset {
 
                 val
             })
-            .map(image::open)
-            .map(|val| val.expect("Image couldn't open this"))
-            .map(|image| {
-                image
-                    .into_luma8()
-                    .iter()
-                    .map(|px| PixelDepth::U8(*px))
-                    .collect::<Vec<_>>()
-            })
             .collect::<Vec<_>>();
+
+        let (left_paths, left_seq) = left_seq
+            .into_iter()
+            .map(|val| (val, image::open(val)))
+            .map(|val| (val.0, val.1.expect("Image couldn't open this")))
+            .map(|image| {
+                (
+                    image.0,
+                    image
+                        .1
+                        .into_luma8()
+                        .iter()
+                        .map(|px| PixelDepth::U8(*px))
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect::<(Vec<_>, Vec<_>)>();
 
         let orig_chunks = std::fs::read_dir(orig_path)
             .expect("Couldn't read dataset dir")
@@ -134,7 +144,8 @@ impl HandsignDataset for CedarDataset {
             })
             .collect::<Vec<_>>();
 
-        let forge_path = "../handwritten-signatures-ver1/CEDAR_again_1/full_forg";
+        let forge_path =
+            "../handwritten-signatures-ver1/CEDAR_again_1/full_forg";
 
         let seq = rng.sample_iter(
             Bernoulli::new(0.5).expect("Couldn't create Bernoulli"),
@@ -155,9 +166,12 @@ impl HandsignDataset for CedarDataset {
                 thing.extension().and_then(|val| val.to_str()) == Some("png")
             });
 
-        let result = orig.into_iter().zip(forge).zip(seq).map(
-            |((first, second), get_original)| {
-                println!("first: {:?}, second: {:?}", first, second);
+        let result = orig.into_iter().zip(forge).zip(seq).zip(left_paths).map(
+            |(((first, second), get_original), left)| {
+                println!(
+                    "first: {:?}, second: {:?}, left: {:?}",
+                    first, second, left
+                );
 
                 if get_original {
                     (first, true)

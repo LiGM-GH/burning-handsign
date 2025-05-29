@@ -4,14 +4,15 @@ use batcher::{CedarBatch, HandsignBatch, HandsignBatcher};
 use burn::{
     data::{
         dataloader::DataLoaderBuilder,
-        dataset::{Dataset, vision::ImageFolderDataset},
+        dataset::{vision::ImageFolderDataset, Dataset},
     },
-    optim::{AdamConfig, RmsPropConfig, adaptor::OptimizerAdaptor},
+    lr_scheduler::{exponential::{ExponentialLrScheduler, ExponentialLrSchedulerConfig}, LrScheduler},
+    optim::{adaptor::OptimizerAdaptor, AdamConfig, RmsPropConfig},
     prelude::*,
     record::{CompactRecorder, Recorder},
     tensor::{backend::AutodiffBackend, cast::ToElement},
     train::{
-        LearnerBuilder, TrainOutput, TrainStep, ValidStep, metric::LossMetric,
+        metric::LossMetric, LearnerBuilder, TrainOutput, TrainStep, ValidStep
     },
 };
 use metric::{
@@ -200,7 +201,7 @@ pub fn train<B: AutodiffBackend>(
     type Opt<B> = OptimizerAdaptor<burn::optim::RmsProp, TwinModel<B>, B>;
     type Model<B> = TwinModel<B>;
 
-    type Builder<B> = LearnerBuilder<B, C1<B>, C2<B>, Model<B>, Opt<B>, f64>;
+    type Builder<B> = LearnerBuilder<B, C1<B>, C2<B>, Model<B>, Opt<B>, ExponentialLrScheduler>;
 
     let builder: Builder<B> = LearnerBuilder::new(artifact_dir)
         .metric_train_numeric(TimesGuessedMetric::new())
@@ -215,7 +216,9 @@ pub fn train<B: AutodiffBackend>(
     let learner = builder.build(
         config.model.init::<B>(device),
         config.optimizer.init(),
-        config.learning_rate,
+        ExponentialLrSchedulerConfig::new(config.learning_rate, 0.1)
+            .init()
+            .expect("Couldn't initialize learning rate scheduler"),
     );
 
     let model_trained = learner.fit(dataloader_train, dataloader_test);
