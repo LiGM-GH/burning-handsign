@@ -43,6 +43,8 @@ pub struct ModelConfig {
     conv2_chans: usize,
     #[config(default = "0.5")]
     dropout: f64,
+    #[config(default = 128)]
+    last_layer: usize,
 }
 
 impl ModelConfig {
@@ -112,8 +114,8 @@ impl ModelConfig {
         const SIZE11: [usize; 3] = [SIZE10[0], SIZE10[1], SIZE10[2]];
         const SIZE12: usize = SIZE11[0] * SIZE11[1] * SIZE11[2];
         const SIZE13: usize = 256;
-        const SIZE14: usize = 128;
-        const FINAL_SIZE: usize = SIZE14;
+        let size14: usize = self.last_layer;
+        let final_size: usize = size14;
 
         const LINEAR12: usize = SIZE12;
         const LINEAR14: usize = SIZE13;
@@ -183,7 +185,7 @@ impl ModelConfig {
             linear12: LinearConfig::new(SIZE12, SIZE13).init(device),
 
             drop13: DropoutConfig::new(0.5).init(),
-            linear14: LinearConfig::new(SIZE13, SIZE14).init(device),
+            linear14: LinearConfig::new(SIZE13, size14).init(device),
         };
 
         println!("thing: {:?}", thing);

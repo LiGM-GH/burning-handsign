@@ -10,6 +10,9 @@ use burn::{
         LrScheduler,
         exponential::{ExponentialLrScheduler, ExponentialLrSchedulerConfig},
     },
+    nn::{
+        Linear, LinearConfig, Relu, Sigmoid, loss::BinaryCrossEntropyLossConfig,
+    },
     optim::{AdamConfig, RmsPropConfig, adaptor::OptimizerAdaptor},
     prelude::*,
     record::{CompactRecorder, Recorder},
@@ -24,6 +27,7 @@ use metric::{
 
 use normalizer::Normalizer;
 use single_twin_model::SingleTwinModel;
+use tap::Pipe;
 
 use crate::dataset::{
     CedarDataset, HandsignDataset, IMAGE_DEPTH, IMAGE_HEIGHT, IMAGE_LENGTH,
@@ -41,11 +45,17 @@ pub struct ModelConfig {
     conv2_chans: usize,
     #[config(default = "0.5")]
     dropout: f64,
+    #[config(default = 128)]
+    inner_last_layer: usize,
 }
 
 #[derive(Module, Debug)]
 pub struct TwinModel<B: Backend> {
     inner_model: SingleTwinModel<B>,
+    linear1: Linear<B>,
+    act1: Relu,
+    linear2: Linear<B>,
+    act2: Sigmoid,
 }
 
 impl<B: Backend> TwinModel<B> {
@@ -53,10 +63,14 @@ impl<B: Backend> TwinModel<B> {
         &self,
         left: Tensor<B, 4>,
         right: Tensor<B, 4>,
-    ) -> (Tensor<B, 2>, Tensor<B, 2>) {
+    ) -> Tensor<B, 1> {
         let left_result = self.inner_model.forward(left);
         let right_result = self.inner_model.forward(right);
-        (left_result, right_result)
+
+        Tensor::cat(vec![left_result, right_result], 1)
+            .pipe(|both| self.linear1.forward(both))
+            .pipe(|both| self.linear2.forward(both))
+            .squeeze(1)
     }
 
     fn forward_classification(
@@ -69,25 +83,12 @@ impl<B: Backend> TwinModel<B> {
         const BETA: f64 = 0.5;
         const M: f64 = 1.0;
 
-        let (left_result, right_result) = self.forward(left, right);
-        let diff = left_result - right_result;
-        let dw_square = diff.powi_scalar(2).sum_dim(1).squeeze(1);
-        let dw = dw_square.clone().sqrt();
-        let output = dw.clone();
+        let output = self.forward(left, right);
+        let loss = BinaryCrossEntropyLossConfig::new()
+            .with_logits(true)
+            .init(&targets.device());
 
-        // dw² * α * (1 - y) + β * y * max { 0, (-1 * (dw - m)) }²
-        let loss = dw_square
-            .mul_scalar(ALPHA)
-            .mul(targets.clone().sub_scalar(1).neg().float())
-            .add(
-                dw.sub_scalar(M)
-                    .neg()
-                    .clamp_min(0)
-                    .powi_scalar(2)
-                    .mul(targets.clone().float())
-                    .mul_scalar(BETA),
-            )
-            .mean();
+        let loss = loss.forward(output.clone(), targets.clone());
 
         log::error!("LOSS: {:?}", loss);
 
@@ -106,10 +107,21 @@ impl ModelConfig {
             self.conv1_chans,
             self.conv2_chans,
         )
+        .with_last_layer(self.inner_last_layer)
         .with_dropout(self.dropout)
         .init(device);
 
-        TwinModel { inner_model }
+        TwinModel {
+            inner_model,
+            linear1: LinearConfig::new(
+                self.inner_last_layer * 2,
+                self.inner_last_layer,
+            )
+            .init(device),
+            act1: Relu::new(),
+            linear2: LinearConfig::new(self.inner_last_layer, 1).init(device),
+            act2: Sigmoid::new(),
+        }
     }
 }
 
@@ -353,32 +365,15 @@ pub fn guess<B: Backend>(
 
     println!("batch: {:?}", batch);
 
-    let (left, right) = model.forward(batch.left, batch.right);
-    let diff = left - right;
+    let guesses = model.forward(batch.left, batch.right);
 
-    let dw_square: Tensor<B, 1> = diff.powi_scalar(2).sum_dim(1).squeeze(1);
-    let dw = dw_square.clone().sqrt();
-    let guesses = dw.clone();
-
-    println!("Guesses: {}", dw);
+    println!("Guesses: {:?}", guesses.clone().into_data().to_vec::<f32>());
 
     const ALPHA: f64 = 0.5;
     const BETA: f64 = 0.5;
     const M: f64 = 1.0;
 
-    let loss = dw_square
-        .mul_scalar(ALPHA)
-        .mul(targets.clone().sub_scalar(1).neg().float())
-        .add(
-            dw.sub_scalar(M)
-                .neg()
-                .clamp_min(0)
-                .powi_scalar(2)
-                .mul(targets.clone().float())
-                .mul_scalar(BETA),
-        );
-
-    let guessed_part = guesses.round().int().clamp(0, 1).sum().into_scalar();
+    let guessed_part = guesses.clamp(0, 1).round().int().sum().into_scalar();
 
     println!(
         "Guessed {} times out of {}: {:.2}%",
@@ -386,6 +381,4 @@ pub fn guess<B: Backend>(
         len,
         guessed_part.to_i8() as f64 / len as f64 * 100.0,
     );
-
-    println!("Loss: {:?}", loss.to_data().to_vec::<f32>())
 }
