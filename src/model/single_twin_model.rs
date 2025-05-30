@@ -3,7 +3,7 @@ use burn::{
         BatchNorm, BatchNormConfig, Dropout, DropoutConfig, Linear,
         LinearConfig, Relu,
         conv::{Conv2d, Conv2dConfig},
-        pool::{MaxPool2d, MaxPool2dConfig},
+        pool::{AvgPool2d, AvgPool2dConfig, MaxPool2d, MaxPool2dConfig},
     },
     prelude::*,
 };
@@ -16,24 +16,23 @@ pub struct SingleTwinModel<B: Backend> {
     activation: Relu,
 
     conv1: Conv2d<B>,
+    norm1: BatchNorm<B, 2>,
+
+    conv2: Conv2d<B>,
     norm2: BatchNorm<B, 2>,
-    pool3: MaxPool2d,
+
+    drop1: Dropout,
+
+    conv3: Conv2d<B>,
+    norm3: BatchNorm<B, 2>,
 
     conv4: Conv2d<B>,
-    norm5: BatchNorm<B, 2>,
+    norm4: BatchNorm<B, 2>,
 
-    pool6: MaxPool2d,
-    drop7: Dropout,
+    pool1: AvgPool2d,
+    drop2: Dropout,
 
-    conv8: Conv2d<B>,
-    conv9: Conv2d<B>,
-    pool10: MaxPool2d,
-    drop11: Dropout,
-
-    linear12: Linear<B>,
-    drop13: Dropout,
-
-    linear14: Linear<B>,
+    linear1: Linear<B>,
 }
 
 #[derive(Config, Debug)]
@@ -53,24 +52,29 @@ impl ModelConfig {
     pub fn init<B: Backend>(&self, device: &B::Device) -> SingleTwinModel<B> {
         const CONV1: usize = 1;
         const CONV1_KERSIZE: usize = 11;
+
         const POOL3_STRIDE: usize = 2;
         const POOL3_KERSIZE: usize = 3;
-        const CONV4: usize = 64;
-        const CONV4_KERSIZE: usize = 5;
-        const CONV4_PADDING: usize = 2;
+
+        const CONV2: usize = 64;
+        const CONV2_KERSIZE: usize = 5;
+        const CONV2_PADDING: usize = 2;
+
         const POOL6_KERSIZE: usize = 3;
         const POOL6_STRIDE: usize = 2;
-        const CONV8: usize = 128;
-        const CONV8_KERSIZE: usize = 3;
-        const CONV8_PADDING: usize = 1;
-        const CONV8_STRIDE: usize = 1;
-        const CONV9: usize = 256;
-        const CONV9_PADDING: usize = 1;
-        const CONV9_STRIDE: usize = 1;
-        const CONV9_KERSIZE: usize = 3;
-        const CONV9_OUT: usize = 512;
-        const POOL10_KERSIZE: usize = 3;
-        const POOL10_STRIDE: usize = 2;
+
+        const CONV3: usize = 128;
+        const CONV3_KERSIZE: usize = 3;
+        const CONV3_PADDING: usize = 1;
+        const CONV3_STRIDE: usize = 1;
+
+        const CONV4: usize = 256;
+        const CONV4_KERSIZE: usize = 3;
+        const CONV4_PADDING: usize = 1;
+        const CONV4_STRIDE: usize = 1;
+        const CONV4_OUT: usize = 512;
+        const POOL1_KERSIZE: usize = 3;
+        const POOL1_STRIDE: usize = 2;
 
         const SIZE0: [usize; 3] = [IMAGE_HEIGHT, IMAGE_LENGTH, IMAGE_DEPTH];
         const SIZE1: [usize; 3] = [
@@ -85,9 +89,9 @@ impl ModelConfig {
             SIZE2[2],
         ];
         const SIZE4: [usize; 3] = [
-            SIZE3[0] - CONV4_KERSIZE / 2 + CONV4_PADDING,
-            SIZE3[1] - CONV4_KERSIZE / 2 + CONV4_PADDING,
-            SIZE3[2] * CONV8 / CONV4,
+            SIZE3[0] - CONV2_KERSIZE / 2 + CONV2_PADDING,
+            SIZE3[1] - CONV2_KERSIZE / 2 + CONV2_PADDING,
+            SIZE3[2] * CONV3 / CONV2,
         ];
         const SIZE5: [usize; 3] = [SIZE4[0], SIZE4[1], SIZE4[2]];
         const SIZE6: [usize; 3] = [
@@ -97,23 +101,24 @@ impl ModelConfig {
         ];
         const SIZE7: [usize; 3] = [SIZE6[0], SIZE6[1], SIZE6[2]];
         const SIZE8: [usize; 3] = [
-            SIZE7[0] / CONV8_STRIDE - CONV8_KERSIZE / 2 + CONV8_PADDING,
-            SIZE7[1] / CONV8_STRIDE - CONV8_KERSIZE / 2 + CONV8_PADDING,
-            SIZE7[2] * CONV9 / CONV8,
+            SIZE7[0] / CONV3_STRIDE - CONV3_KERSIZE / 2 + CONV3_PADDING,
+            SIZE7[1] / CONV3_STRIDE - CONV3_KERSIZE / 2 + CONV3_PADDING,
+            SIZE7[2] * CONV4 / CONV3,
         ];
         const SIZE9: [usize; 3] = [
-            SIZE8[0] / CONV9_STRIDE - CONV9_KERSIZE / 2 + CONV9_PADDING,
-            SIZE8[1] / CONV9_STRIDE - CONV9_KERSIZE / 2 + CONV9_PADDING,
+            SIZE8[0] / CONV4_STRIDE - CONV4_KERSIZE / 2 + CONV4_PADDING,
+            SIZE8[1] / CONV4_STRIDE - CONV4_KERSIZE / 2 + CONV4_PADDING,
             SIZE8[2],
         ];
         const SIZE10: [usize; 3] = [
-            (SIZE9[0] - POOL10_KERSIZE / 2) / POOL10_STRIDE,
-            (SIZE9[1] - POOL10_KERSIZE / 2) / POOL10_STRIDE,
-            CONV9_OUT,
+            (SIZE9[0] - POOL1_KERSIZE / 2) / POOL1_STRIDE,
+            (SIZE9[1] - POOL1_KERSIZE / 2) / POOL1_STRIDE,
+            CONV4_OUT,
         ];
         const SIZE11: [usize; 3] = [SIZE10[0], SIZE10[1], SIZE10[2]];
         const SIZE12: usize = SIZE11[0] * SIZE11[1] * SIZE11[2];
         const SIZE13: usize = 256;
+
         let size14: usize = self.last_layer;
         let final_size: usize = size14;
 
@@ -123,20 +128,16 @@ impl ModelConfig {
         let thing = SingleTwinModel {
             activation: Relu::new(),
             conv1: Conv2dConfig::new(
-                [CONV1, CONV4],
+                [CONV1, CONV2],
                 [CONV1_KERSIZE, CONV1_KERSIZE],
             )
             .with_stride([1, 1])
             .init(device),
 
-            norm2: BatchNormConfig::new(CONV4).init(device),
+            norm1: BatchNormConfig::new(CONV4).init(device),
 
-            pool3: MaxPool2dConfig::new([3, 3])
-                .with_strides([POOL3_STRIDE, POOL3_STRIDE])
-                .init(),
-
-            conv4: Conv2dConfig::new(
-                [CONV4, CONV8],
+            conv2: Conv2dConfig::new(
+                [CONV2, CONV3],
                 [CONV4_KERSIZE, CONV4_KERSIZE],
             )
             .with_stride([1, 1])
@@ -146,46 +147,43 @@ impl ModelConfig {
             ))
             .init(device),
 
-            norm5: BatchNormConfig::new(CONV8).init(device),
+            norm2: BatchNormConfig::new(CONV3).init(device),
 
-            pool6: MaxPool2dConfig::new([POOL6_KERSIZE, POOL6_KERSIZE])
-                .with_strides([POOL6_STRIDE, POOL6_STRIDE])
-                .init(),
+            drop1: DropoutConfig::new(0.3).init(),
 
-            drop7: DropoutConfig::new(0.3).init(),
-
-            conv8: Conv2dConfig::new(
-                [CONV8, CONV9],
-                [CONV8_KERSIZE, CONV8_KERSIZE],
+            conv3: Conv2dConfig::new(
+                [CONV3, CONV4],
+                [CONV3_KERSIZE, CONV3_KERSIZE],
             )
-            .with_stride([CONV8_STRIDE, CONV8_STRIDE])
+            .with_stride([CONV3_STRIDE, CONV3_STRIDE])
             .with_padding(nn::PaddingConfig2d::Explicit(
-                CONV8_PADDING,
-                CONV8_PADDING,
+                CONV3_PADDING,
+                CONV3_PADDING,
             ))
             .init(device),
 
-            conv9: Conv2dConfig::new(
-                [CONV9, CONV9_OUT],
-                [CONV9_KERSIZE, CONV9_KERSIZE],
+            norm3: BatchNormConfig::new(CONV4).init(device),
+
+            conv4: Conv2dConfig::new(
+                [CONV4, CONV4_OUT],
+                [CONV4_KERSIZE, CONV4_KERSIZE],
             )
-            .with_stride([CONV9_STRIDE, CONV9_STRIDE])
+            .with_stride([CONV4_STRIDE, CONV4_STRIDE])
             .with_padding(nn::PaddingConfig2d::Explicit(
-                CONV9_PADDING,
-                CONV9_PADDING,
+                CONV4_PADDING,
+                CONV4_PADDING,
             ))
             .init(device),
 
-            pool10: MaxPool2dConfig::new([POOL10_KERSIZE, POOL10_KERSIZE])
-                .with_strides([POOL10_STRIDE, POOL10_STRIDE])
+            norm4: BatchNormConfig::new(CONV4_OUT).init(device),
+
+            pool1: AvgPool2dConfig::new([POOL1_KERSIZE, POOL1_KERSIZE])
+                .with_strides([POOL1_STRIDE, POOL1_STRIDE])
                 .init(),
 
-            drop11: DropoutConfig::new(0.3).init(),
+            drop2: DropoutConfig::new(0.3).init(),
 
-            linear12: LinearConfig::new(SIZE12, SIZE13).init(device),
-
-            drop13: DropoutConfig::new(0.5).init(),
-            linear14: LinearConfig::new(SIZE13, size14).init(device),
+            linear1: LinearConfig::new(SIZE12, SIZE13).init(device),
         };
 
         println!("thing: {:?}", thing);
@@ -212,41 +210,35 @@ impl<B: Backend> SingleTwinModel<B> {
             .pipe(|x| dprint!(x))
             .pipe(|x| self.activation.forward(x))
             .pipe(|x| dprint!(x))
+            .pipe(|x| self.norm1.forward(x))
+            .pipe(|x| dprint!(x))
+            .pipe(|x| self.conv2.forward(x))
+            .pipe(|x| dprint!(x))
+            .pipe(|x| self.activation.forward(x))
+            .pipe(|x| dprint!(x))
             .pipe(|x| self.norm2.forward(x))
             .pipe(|x| dprint!(x))
-            .pipe(|x| self.pool3.forward(x))
+            .pipe(|x| self.drop1.forward(x))
+            .pipe(|x| dprint!(x))
+            .pipe(|x| self.conv3.forward(x))
+            .pipe(|x| dprint!(x))
+            .pipe(|x| self.activation.forward(x))
+            // .pipe(|x| dprint!(x))
+            // .pipe(|x| self.norm3.forward(x))
             .pipe(|x| dprint!(x))
             .pipe(|x| self.conv4.forward(x))
             .pipe(|x| dprint!(x))
             .pipe(|x| self.activation.forward(x))
+            // .pipe(|x| dprint!(x))
+            // .pipe(|x| self.norm4.forward(x))
             .pipe(|x| dprint!(x))
-            .pipe(|x| self.norm5.forward(x))
+            .pipe(|x| self.pool1.forward(x))
             .pipe(|x| dprint!(x))
-            .pipe(|x| self.pool6.forward(x))
-            .pipe(|x| dprint!(x))
-            .pipe(|x| self.drop7.forward(x))
-            .pipe(|x| dprint!(x))
-            .pipe(|x| self.conv8.forward(x))
-            .pipe(|x| dprint!(x))
-            .pipe(|x| self.activation.forward(x))
-            .pipe(|x| dprint!(x))
-            .pipe(|x| self.conv9.forward(x))
-            .pipe(|x| dprint!(x))
-            .pipe(|x| self.activation.forward(x))
-            .pipe(|x| dprint!(x))
-            .pipe(|x| self.pool10.forward(x))
-            .pipe(|x| dprint!(x))
-            .pipe(|x| self.drop11.forward(x))
+            .pipe(|x| self.drop2.forward(x))
             .pipe(|x| dprint!(x))
             .pipe(|x| x.reshape([0, -1]))
             .pipe(|x| dprint!(x))
-            .pipe(|x| self.linear12.forward(x))
-            .pipe(|x| dprint!(x))
-            .pipe(|x| self.activation.forward(x))
-            .pipe(|x| dprint!(x))
-            .pipe(|x| self.drop13.forward(x))
-            .pipe(|x| dprint!(x))
-            .pipe(|x| self.linear14.forward(x))
+            .pipe(|x| self.linear1.forward(x))
             .pipe(|x| dprint!(x))
             .pipe(|x| self.activation.forward(x))
             .pipe(|x| dprint!(x));
