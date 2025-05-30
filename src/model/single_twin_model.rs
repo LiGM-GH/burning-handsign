@@ -80,7 +80,7 @@ impl ModelConfig {
         const SIZE1: [usize; 3] = [
             SIZE0[0] - (CONV1_KERSIZE - 1),
             SIZE0[1] - (CONV1_KERSIZE - 1),
-            SIZE0[2] * CONV4 / CONV1,
+            SIZE0[2] * CONV2 / CONV1,
         ];
         const SIZE2: [usize; 3] = [SIZE1[0], SIZE1[1], SIZE1[2]];
         const SIZE3: [usize; 3] = [
