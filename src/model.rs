@@ -64,8 +64,8 @@ impl<B: Backend> TwinModel<B> {
         left: Tensor<B, 4>,
         right: Tensor<B, 4>,
     ) -> Tensor<B, 1> {
-        let left_result = self.inner_model.forward(left);
-        let right_result = self.inner_model.forward(right);
+        let left_result = self.inner_model.forward(left).detach();
+        let right_result = self.inner_model.forward(right).detach();
 
         Tensor::cat(vec![left_result, right_result], 1)
             .pipe(|both| self.linear1.forward(both))
