@@ -91,7 +91,7 @@ impl<B: Backend> TwinModel<B> {
 
         let output = self.forward(left, right);
         let loss = BinaryCrossEntropyLossConfig::new()
-            .with_logits(false)
+            .with_logits(true)
             .init(&targets.device());
 
         let loss = loss.forward(output.clone(), targets.clone());
