@@ -1,8 +1,8 @@
-use clap::{Args, Parser};
+use clap::Parser;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
-pub enum Things {
+pub enum CliCommands {
     Serve,
     Learn {
         dataset_path: String,
@@ -15,9 +15,4 @@ pub enum Things {
     Mean {
         dataset_path: String,
     },
-}
-
-#[derive(Args, Debug)]
-pub struct Inner {
-    nothing: i32,
 }

@@ -95,7 +95,7 @@ impl<B: Backend> Metric for TimesGuessedMetric<B> {
             .expect("Update failed on metric.rs/TimesGuessedMetric/update");
 
         self.state.update(
-            times,
+            1.0 - times,
             batch_size,
             FormatOptions::new(Self::NAME).precision(2),
         )
