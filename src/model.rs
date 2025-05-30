@@ -164,7 +164,7 @@ impl<B: Backend> ValidStep<CedarBatch<B>, BinaryClassificationOutput<B>>
 #[derive(Config)]
 pub struct TrainingConfig {
     pub model: ModelConfig,
-    pub optimizer: RmsPropConfig,
+    pub optimizer: AdamConfig,
     #[config(default = 10)]
     pub num_epochs: usize,
     #[config(default = 64)]
@@ -215,7 +215,7 @@ pub fn train<B: AutodiffBackend>(
     type C2<B> =
         BinaryClassificationOutput<<B as AutodiffBackend>::InnerBackend>;
 
-    type Opt<B> = OptimizerAdaptor<burn::optim::RmsProp, TwinModel<B>, B>;
+    type Opt<B> = OptimizerAdaptor<burn::optim::Adam, TwinModel<B>, B>;
     type Model<B> = TwinModel<B>;
 
     type Builder<B> = LearnerBuilder<
