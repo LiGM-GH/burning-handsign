@@ -134,7 +134,7 @@ impl ModelConfig {
             .with_stride([1, 1])
             .init(device),
 
-            norm1: BatchNormConfig::new(CONV4).init(device),
+            norm1: BatchNormConfig::new(CONV2).init(device),
 
             conv2: Conv2dConfig::new(
                 [CONV2, CONV3],
