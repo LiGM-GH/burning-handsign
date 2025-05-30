@@ -9,7 +9,7 @@ use burn::{
     },
     nn::{
         BatchNorm, BatchNormConfig, Dropout, DropoutConfig, Linear,
-        LinearConfig, Relu,
+        LinearConfig, Relu, Sigmoid,
         conv::{Conv2d, Conv2dConfig},
         loss::BinaryCrossEntropyLossConfig,
         pool::{MaxPool2d, MaxPool2dConfig},
@@ -43,6 +43,7 @@ pub const IMAGE_DEPTH: usize = 1;
 #[derive(Module, Debug)]
 pub struct Model<B: Backend> {
     activation: Relu,
+    act2: Sigmoid,
 
     conv1: Conv2d<B>,
     norm2: BatchNorm<B, 2>,
@@ -148,6 +149,7 @@ impl ModelConfig {
 
         let thing = Model {
             activation: Relu::new(),
+            act2: Sigmoid::new(),
             conv1: Conv2dConfig::new(
                 [CONV1, CONV4],
                 [CONV1_KERSIZE, CONV1_KERSIZE],
@@ -244,6 +246,8 @@ impl<B: Backend> Model<B> {
             .pipe(|x| dprint!(x))
             .pipe(|x| self.linear14.forward(x))
             .pipe(|x| dprint!(x))
+            .pipe(|x| self.act2.forward(x))
+            .pipe(|x| dprint!(x))
             .pipe(|x| x.squeeze::<1>(1))
             .pipe(|x| dprint!(x));
 
@@ -260,7 +264,7 @@ impl<B: Backend> Model<B> {
         log::error!("FORWARD::OUTPUT: {}", output);
 
         let loss = BinaryCrossEntropyLossConfig::new()
-            .with_logits(true)
+            .with_logits(false)
             .init(&output.device())
             .forward(output.clone(), targets.clone());
 
