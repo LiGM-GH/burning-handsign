@@ -138,12 +138,12 @@ impl ModelConfig {
 
             conv2: Conv2dConfig::new(
                 [CONV2, CONV3],
-                [CONV4_KERSIZE, CONV4_KERSIZE],
+                [CONV2_KERSIZE, CONV2_KERSIZE],
             )
             .with_stride([1, 1])
             .with_padding(nn::PaddingConfig2d::Explicit(
-                CONV4_PADDING,
-                CONV4_PADDING,
+                CONV2_PADDING,
+                CONV2_PADDING,
             ))
             .init(device),
 
