@@ -83,22 +83,14 @@ impl ModelConfig {
             SIZE0[2] * CONV2 / CONV1,
         ];
         const SIZE2: [usize; 3] = [SIZE1[0], SIZE1[1], SIZE1[2]];
-        const SIZE3: [usize; 3] = [
-            (SIZE2[0] - POOL3_KERSIZE / 2) / POOL3_STRIDE,
-            (SIZE2[1] - POOL3_KERSIZE / 2) / POOL3_STRIDE,
-            SIZE2[2],
-        ];
+        const SIZE3: [usize; 3] = [SIZE2[0], SIZE2[1], SIZE2[2]];
         const SIZE4: [usize; 3] = [
             SIZE3[0] - CONV2_KERSIZE / 2 + CONV2_PADDING,
             SIZE3[1] - CONV2_KERSIZE / 2 + CONV2_PADDING,
             SIZE3[2] * CONV3 / CONV2,
         ];
         const SIZE5: [usize; 3] = [SIZE4[0], SIZE4[1], SIZE4[2]];
-        const SIZE6: [usize; 3] = [
-            SIZE5[0] / POOL6_STRIDE - POOL6_KERSIZE / 2,
-            SIZE5[1] / POOL6_STRIDE - POOL6_KERSIZE / 2,
-            SIZE5[2],
-        ];
+        const SIZE6: [usize; 3] = [SIZE5[0], SIZE5[1], SIZE5[2]];
         const SIZE7: [usize; 3] = [SIZE6[0], SIZE6[1], SIZE6[2]];
         const SIZE8: [usize; 3] = [
             SIZE7[0] / CONV3_STRIDE - CONV3_KERSIZE / 2 + CONV3_PADDING,
