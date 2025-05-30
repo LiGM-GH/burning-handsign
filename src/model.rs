@@ -72,6 +72,10 @@ impl<B: Backend> TwinModel<B> {
             .pipe(|both| self.act1.forward(both))
             .pipe(|both| self.linear2.forward(both))
             .pipe(|both| self.act2.forward(both))
+            .pipe(|x| {
+                log::error!("line {} | FORWARD {}", line!(), x);
+                x
+            })
             .squeeze(1)
     }
 
