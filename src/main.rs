@@ -10,8 +10,8 @@ mod dataset;
 mod model;
 mod server;
 
-const MEAN_DS: f64 = 8.853009;
-const STDDEV_DS: f64 = 24.0;
+const MEAN_DS: f64 = 15.686447;
+const STDDEV_DS: f64 = 60.0;
 
 fn main() {
     log4rs::init_file("log4rs.yaml", Deserializers::new()).ok();
@@ -20,7 +20,9 @@ fn main() {
 
     match args {
         CliCommands::Mean { dataset_path } => mean_std(&dataset_path),
-        CliCommands::Learn { dataset_path } => learn(&dataset_path, "artifacts"),
+        CliCommands::Learn { dataset_path } => {
+            learn(&dataset_path, "artifacts")
+        }
         CliCommands::Guess {
             guess_path,
             model_path,
