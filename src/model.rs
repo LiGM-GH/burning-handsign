@@ -69,7 +69,9 @@ impl<B: Backend> TwinModel<B> {
 
         Tensor::cat(vec![left_result, right_result], 1)
             .pipe(|both| self.linear1.forward(both))
+            .pipe(|both| self.act1.forward(both))
             .pipe(|both| self.linear2.forward(both))
+            .pipe(|both| self.act2.forward(both))
             .squeeze(1)
     }
 
