@@ -175,7 +175,7 @@ impl ModelConfig {
 
             drop2: DropoutConfig::new(0.3).init(),
 
-            linear1: LinearConfig::new(SIZE12, SIZE13).init(device),
+            linear1: LinearConfig::new(SIZE12, final_size).init(device),
         };
 
         println!("thing: {:?}", thing);
