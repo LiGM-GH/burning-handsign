@@ -18,7 +18,6 @@ use tower_http::services::ServeFile;
 use crate::model::learn;
 
 const NUMBER_OF_SAMPLES: usize = 10;
-const FORGE_METHOD_NUMBER: usize = 5;
 
 trait SpawnEach {
     async fn spawn_each(
@@ -33,7 +32,7 @@ impl SpawnEach for ReadDir {
         mut cmd: impl FnMut(DirEntry) -> Command,
     ) -> Result<(), StatusCode> {
         log::trace!("Enter");
-        let mut results = Vec::with_capacity(NUMBER_OF_SAMPLES);
+        let mut results = Vec::with_capacity(NUMBER_OF_SAMPLES * 2);
 
         let mut i = 0;
 
@@ -116,7 +115,12 @@ pub async fn model(
 
             let mut hasher = DefaultHasher::new();
             name.hash(&mut hasher);
-            let full_fname = format!("{dirname}/{:x}.png", hasher.finish());
+
+            let full_fname = match image.name() {
+                Some("real") => format!("{dirname}/{:x}.png", hasher.finish()),
+                Some("forge") => format!("{dirname}/forge_{:x}.png", hasher.finish()),
+                _ => return Err(StatusCode::BAD_REQUEST),
+            };
 
             log::trace!("Current filename: {}", full_fname);
 
@@ -145,49 +149,11 @@ pub async fn model(
 
             i += 1;
 
-            if i >= NUMBER_OF_SAMPLES {
-                break;
-            }
         }
 
         if i < NUMBER_OF_SAMPLES {
             return Err(StatusCode::UNPROCESSABLE_ENTITY);
         }
-    }
-
-    let files = tokio::fs::read_dir(&dirname).await.map_err(|err| {
-        log::error!("Couldn't read dir {}: {}", dirname, err);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-
-    {
-        let mut i = 0;
-        files
-            .spawn_each(|entry| {
-                let forge_name = format!("scripts/forge{i}.sh");
-
-                i += 1;
-
-                if i >= FORGE_METHOD_NUMBER {
-                    i = 0;
-                }
-
-                let fname = format!(
-                    "{dirname}/{}",
-                    entry.file_name().to_str().unwrap()
-                );
-                let result_fname = format!(
-                    "{dirname}/forge_{}",
-                    entry.file_name().to_str().unwrap()
-                );
-
-                log::trace!("Result fname: {result_fname}");
-
-                Command::new(&forge_name).tap_mut(|command| {
-                    command.args([&fname, &result_fname]);
-                })
-            })
-            .await?;
     }
 
     let files = tokio::fs::read_dir(&dirname).await.map_err(|err| {

@@ -1,8 +1,5 @@
 use axum::{
-    Router,
-    http::{Request, StatusCode},
-    response::{Html, IntoResponse},
-    routing::{get, post},
+    extract::DefaultBodyLimit, http::{Request, StatusCode}, response::{Html, IntoResponse}, routing::{get, post}, Router
 };
 use tera::Context;
 
@@ -16,7 +13,10 @@ pub async fn serve() {
         .route("/", get(get_view))
         .route("/static/main.js", get(get_js))
         .route("/static/main.css", get(get_css))
-        .route("/model", post(model));
+        .route("/model", post(model))
+        .layer(DefaultBodyLimit::max(const {
+            1024 * 1024 * 12 // 12 MB
+        }));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
 
