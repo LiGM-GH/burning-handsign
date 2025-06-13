@@ -1,9 +1,15 @@
 use axum::{
-    extract::DefaultBodyLimit, http::{Request, StatusCode}, response::{Html, IntoResponse}, routing::{get, post}, Router
+    Router,
+    extract::DefaultBodyLimit,
+    http::{Request, StatusCode},
+    response::{Html, IntoResponse},
+    routing::{get, post},
 };
+use axum_server::tls_rustls::RustlsConfig;
 use tera::Context;
 
 use model::model;
+use std::net::SocketAddr;
 
 mod model;
 
@@ -14,13 +20,22 @@ pub async fn serve() {
         .route("/static/main.js", get(get_js))
         .route("/static/main.css", get(get_css))
         .route("/model", post(model))
-        .layer(DefaultBodyLimit::max(const {
-            1024 * 1024 * 12 // 12 MB
-        }));
+        .layer(DefaultBodyLimit::max(
+            const {
+                1024 * 1024 * 12 // 12 MB
+            },
+        ));
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
 
-    axum::serve(listener, app).await.unwrap();
+    let config = RustlsConfig::from_pem_file("keys/cert.pem", "keys/key_pkcs8.pem")
+        .await
+        .unwrap();
+
+    axum_server::bind_rustls(addr, config)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
 }
 
 async fn get_view() -> Result<impl IntoResponse, StatusCode> {

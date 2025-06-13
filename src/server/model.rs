@@ -17,7 +17,7 @@ use tower_http::services::ServeFile;
 
 use crate::model::learn;
 
-const NUMBER_OF_SAMPLES: usize = 10;
+const NUMBER_OF_SAMPLES: usize = 5;
 
 trait SpawnEach {
     async fn spawn_each(
@@ -116,9 +116,13 @@ pub async fn model(
             let mut hasher = DefaultHasher::new();
             name.hash(&mut hasher);
 
+            std::time::SystemTime::now().hash(&mut hasher);
+
             let full_fname = match image.name() {
                 Some("real") => format!("{dirname}/{:x}.png", hasher.finish()),
-                Some("forge") => format!("{dirname}/forge_{:x}.png", hasher.finish()),
+                Some("forge") => {
+                    format!("{dirname}/forge_{:x}.png", hasher.finish())
+                }
                 _ => return Err(StatusCode::BAD_REQUEST),
             };
 
@@ -148,7 +152,6 @@ pub async fn model(
             })?;
 
             i += 1;
-
         }
 
         if i < NUMBER_OF_SAMPLES {
@@ -183,12 +186,10 @@ pub async fn model(
     .await
     .map_err(|err| {
         log::error!("Couldn't Tokio::join the learning: {:?}", err);
-
         StatusCode::INTERNAL_SERVER_ERROR
     })?
     .map_err(|err| {
         log::error!("Couldn't complete the learning: {:?}", err);
-
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
