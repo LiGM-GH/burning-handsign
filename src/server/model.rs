@@ -1,6 +1,7 @@
 use std::{
     hash::{DefaultHasher, Hash, Hasher},
     panic::catch_unwind,
+    path::Path,
 };
 
 use axum::{
@@ -12,6 +13,7 @@ use tokio::{
     fs::{DirEntry, File, ReadDir},
     io::AsyncWriteExt,
     process::Command,
+    task::spawn_blocking,
 };
 use tower_http::services::ServeFile;
 
@@ -135,19 +137,16 @@ pub async fn model(
                 .await
                 .map_err(|err| {
                     log::error!("Error while creating file: {:?}", err);
-
                     StatusCode::INTERNAL_SERVER_ERROR
                 })?;
 
             let bytes = image.bytes().await.map_err(|err| {
                 log::error!("Error while getting file: {:?}", err);
-
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
 
             file.write_all(&bytes).await.map_err(|err| {
                 log::error!("Error while saving file: {:?}", err);
-
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
 
@@ -180,20 +179,76 @@ pub async fn model(
     let artifacts_dir = format!("artifacts_{}", dirname);
     let artifacts_dir_clone = artifacts_dir.clone();
 
-    tokio::task::spawn_blocking(move || {
-        catch_unwind(|| learn(&dirname, &artifacts_dir_clone))
-    })
-    .await
-    .map_err(|err| {
-        log::error!("Couldn't Tokio::join the learning: {:?}", err);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?
-    .map_err(|err| {
-        log::error!("Couldn't complete the learning: {:?}", err);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let learning =
+        move || catch_unwind(|| learn(&dirname, &artifacts_dir_clone));
 
-    ServeFile::new(format!("{artifacts_dir}/model.mpk"))
+    let model_path = spawn_blocking(learning)
+        .await
+        .map_err(|err| {
+            log::error!("Couldn't Tokio::join the learning: {:?}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .map_err(|err| {
+            log::error!("Couldn't complete the learning: {:?}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let onnx_path = {
+        let artifacts_dir =
+            Path::new(&artifacts_dir).canonicalize().map_err(|err| {
+                log::error!(
+                    "artifacts_dir path coulnd't be canonicalized: {:?}",
+                    err
+                );
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+        let artifacts_dir = artifacts_dir.to_str().ok_or_else(|| {
+            log::error!("artifacts_dir path coulnd't be canonicalized",);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+        let onnx_path = format!("{artifacts_dir}/model.onnx");
+
+        let model_path =
+            Path::new(&model_path).canonicalize().map_err(|err| {
+                log::error!(
+                    "model_path path coulnd't be canonicalized: {:?}",
+                    err
+                );
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+        let model_path = model_path
+            .to_str()
+            .ok_or_else(|| {
+                log::error!("model_path path coulnd't be canonicalized",);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
+            .to_string();
+
+        println!("ARTIFACTS_DIR: {}", artifacts_dir);
+        println!("ONNX_PATH: {}", onnx_path);
+        println!("MODEL_PATH: {}", model_path);
+
+        let thing: tokio::process::Child =
+            Command::new("scripts/convert_to_onnx.sh")
+                .args([model_path, onnx_path.clone()])
+                .spawn()
+                .map_err(|err| {
+                    log::error!("Couldn't spawn process: {:?}", err);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
+
+        thing.wait_with_output().await.map_err(|err| {
+            log::error!("Coudln't wait for child process: {:?}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+        onnx_path
+    };
+
+    ServeFile::new(onnx_path)
         .try_call(Request::new(""))
         .await
         .map_err(|err| {

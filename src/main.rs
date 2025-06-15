@@ -20,7 +20,9 @@ fn main() {
 
     match args {
         CliCommands::Mean { dataset_path } => mean_std(&dataset_path),
-        CliCommands::Learn { dataset_path } => learn(&dataset_path, "artifacts"),
+        CliCommands::Learn { dataset_path } => {
+            learn(&dataset_path, "artifacts");
+        }
         CliCommands::Guess {
             guess_path,
             model_path,

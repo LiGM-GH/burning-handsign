@@ -321,7 +321,7 @@ pub fn train<B: AutodiffBackend>(
     artifact_dir: &str,
     config: TrainingConfig,
     device: &B::Device,
-) {
+) -> String {
     create_artifact_dir(artifact_dir);
 
     config
@@ -374,6 +374,8 @@ pub fn train<B: AutodiffBackend>(
     model_trained
         .save_file(format!("{artifact_dir}/model"), &CompactRecorder::new())
         .expect("Model should be saved successfully");
+
+    format!("{artifact_dir}/model.mpk")
 }
 
 pub fn guess_inner<B: Backend>(
@@ -497,7 +499,7 @@ pub fn guess_inner<B: Backend>(
     }
 }
 
-pub fn learn(dataset_dir: &str, artifacts_dir: &str) {
+pub fn learn(dataset_dir: &str, artifacts_dir: &str) -> String {
     let device = Default::default();
 
     train::<Autodiff<MyBackend>>(

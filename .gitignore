@@ -7,3 +7,5 @@ user_files
 artifacts_user_files
 TODO.md
 keys
+scripts/model.onnx
+scripts/out.whatever
