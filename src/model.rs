@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use axum::http::StatusCode;
 use batcher::{HandsignBatch, HandsignBatcher};
 use burn::{
     backend::Autodiff,
@@ -371,7 +372,20 @@ pub fn train<B: AutodiffBackend>(
 
     let model_trained = learner.fit(dataloader_train, dataloader_test);
 
+    log::error!(
+        "{:?}",
+        model_trained
+            .conv1
+            .bias
+            .clone()
+            .unwrap()
+            .to_data()
+            .to_vec::<f32>()
+            .unwrap()
+    );
+
     model_trained
+        .clone()
         .save_file(format!("{artifact_dir}/model"), &CompactRecorder::new())
         .expect("Model should be saved successfully");
 
@@ -497,6 +511,126 @@ pub fn guess_inner<B: Backend>(
             guessed_part.to_i8() as f64 / len as f64 * 100.0
         );
     }
+}
+
+pub fn guess_single(
+    image_path: impl AsRef<Path>,
+    model_path: impl AsRef<Path>,
+) -> Result<f32, StatusCode> {
+    log::info!("Entered guess_single");
+    let device = <MyBackend as Backend>::Device::default();
+    let mean = MEAN_DS;
+    let stddev = STDDEV_DS;
+    let config_json_path = "artifacts/config.json";
+    type B = MyBackend;
+
+    log::info!("Set up guess_single");
+
+    let image = ImageFolderDataset::new_classification_with_items(
+        vec![(image_path, String::from("1"))],
+        &[String::from("0"), String::from("1")],
+    )
+    .map_err(|err| {
+        log::error!("Couldn't load image: {:?}", err);
+        StatusCode::BAD_REQUEST
+    })?;
+
+    log::info!("Read image guess_single");
+
+    let images = image
+        .iter()
+        .map(|val| {
+            println!("Current image: {}", val.image_path);
+
+            TensorData::new(
+                val.image
+                    .iter()
+                    .map(|val| -> u8 { val.clone().try_into().unwrap() })
+                    .collect::<Vec<_>>(),
+                Shape::new([IMAGE_LENGTH, IMAGE_HEIGHT, IMAGE_DEPTH]),
+            )
+        })
+        .map(|data| Tensor::<B, 3>::from_data(data, &device) / 255)
+        .map(|tensor| {
+            let tensor = tensor.swap_dims(0, 2).swap_dims(1, 2);
+            log::error!("These are new dims: {:?}", tensor.dims());
+            tensor
+        })
+        .collect::<Vec<_>>();
+
+    log::info!("Tensored image guess_single");
+
+    let mean = images
+        .first()
+        .expect("Not a single item in the directory!")
+        .full_like(mean);
+
+    log::info!("Mean guess_single");
+
+    let stddev = mean.full_like(stddev);
+
+    log::info!("Stddev guess_single");
+
+    let norm = Normalizer::new(&device, mean, stddev);
+
+    log::info!("Norm guess_single");
+
+    let images = images
+        .into_iter()
+        .map(|val| norm.normalize(val))
+        .collect::<Vec<_>>();
+
+    log::info!("Normed guess_single");
+
+    let config =
+        TrainingConfig::load(config_json_path).expect("Couldn't load config");
+
+    log::info!("The model path: {:?}", model_path.as_ref());
+
+    let record = CompactRecorder::new()
+        .load(model_path.as_ref().to_owned(), &device)
+        .inspect_err(|err| {
+            log::error!("Error happened while loading model: {:?}", err);
+        })
+        .expect("Trained model should exist; run train first");
+
+    log::info!("Loaded model weights guess_single");
+
+    let model = config.model.init::<B>(&device).load_record(record);
+
+    log::info!("Loaded model guess_single");
+
+    // let len = images.len();
+
+    let targets = image
+        .iter()
+        .map(|val| {
+            let is_forge = val.image_path.find("forge").map(|_| 1).unwrap_or(0);
+            Tensor::from_data([is_forge.elem::<<burn::backend::LibTorch as burn::prelude::Backend>::IntElem>()], &device)
+        })
+        .collect::<Vec<_>>();
+
+    log::info!("Loaded targets guess_single");
+
+    let batch = HandsignBatch {
+        images: Tensor::stack(images, 0),
+        targets: Tensor::cat(targets, 0),
+    };
+
+    println!("batch: {:?}", batch);
+
+    let output = model.forward(batch.images);
+
+    let result = output.to_data().to_vec::<f32>().map_err(|err| {
+        log::error!("Error while converting model output to vector: {:?}", err);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    result.first().copied().ok_or_else(|| {
+        log::error!("Couldn't get result");
+
+        StatusCode::INTERNAL_SERVER_ERROR
+    })
 }
 
 pub fn learn(dataset_dir: &str, artifacts_dir: &str) -> String {

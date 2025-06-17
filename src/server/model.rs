@@ -1,7 +1,5 @@
 use std::{
-    hash::{DefaultHasher, Hash, Hasher},
-    panic::catch_unwind,
-    path::Path,
+    error::Error, hash::{DefaultHasher, Hash, Hasher}, panic::catch_unwind
 };
 
 use axum::{
@@ -193,62 +191,7 @@ pub async fn model(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    let onnx_path = {
-        let artifacts_dir =
-            Path::new(&artifacts_dir).canonicalize().map_err(|err| {
-                log::error!(
-                    "artifacts_dir path coulnd't be canonicalized: {:?}",
-                    err
-                );
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
-
-        let artifacts_dir = artifacts_dir.to_str().ok_or_else(|| {
-            log::error!("artifacts_dir path coulnd't be canonicalized",);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-        let onnx_path = format!("{artifacts_dir}/model.onnx");
-
-        let model_path =
-            Path::new(&model_path).canonicalize().map_err(|err| {
-                log::error!(
-                    "model_path path coulnd't be canonicalized: {:?}",
-                    err
-                );
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
-
-        let model_path = model_path
-            .to_str()
-            .ok_or_else(|| {
-                log::error!("model_path path coulnd't be canonicalized",);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?
-            .to_string();
-
-        println!("ARTIFACTS_DIR: {}", artifacts_dir);
-        println!("ONNX_PATH: {}", onnx_path);
-        println!("MODEL_PATH: {}", model_path);
-
-        let thing: tokio::process::Child =
-            Command::new("scripts/convert_to_onnx.sh")
-                .args([model_path, onnx_path.clone()])
-                .spawn()
-                .map_err(|err| {
-                    log::error!("Couldn't spawn process: {:?}", err);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?;
-
-        thing.wait_with_output().await.map_err(|err| {
-            log::error!("Coudln't wait for child process: {:?}", err);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-        onnx_path
-    };
-
-    ServeFile::new(onnx_path)
+    ServeFile::new(model_path)
         .try_call(Request::new(""))
         .await
         .map_err(|err| {

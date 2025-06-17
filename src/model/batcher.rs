@@ -58,8 +58,7 @@ impl<B: Backend> Batcher<ImageDatasetItem, HandsignBatch<B>>
             })
             .map(|data| Tensor::<B, 3>::from_data(data, &self.device) / 255)
             .map(|tensor| {
-                let tensor = tensor.swap_dims(0, 2).swap_dims(1, 2);
-                tensor
+                tensor.swap_dims(0, 2).swap_dims(1, 2)
             })
             .collect::<Vec<_>>();
 

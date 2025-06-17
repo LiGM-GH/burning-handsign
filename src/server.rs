@@ -9,9 +9,11 @@ use axum_server::tls_rustls::RustlsConfig;
 use tera::Context;
 
 use model::model;
+use guess::guess;
 use std::net::SocketAddr;
 
 mod model;
+mod guess;
 
 #[tokio::main]
 pub async fn serve() {
@@ -20,9 +22,10 @@ pub async fn serve() {
         .route("/static/main.js", get(get_js))
         .route("/static/main.css", get(get_css))
         .route("/model", post(model))
+        .route("/guess", post(guess))
         .layer(DefaultBodyLimit::max(
             const {
-                1024 * 1024 * 12 // 12 MB
+                1024 * 1024 * 50 // 50 MB
             },
         ));
 
