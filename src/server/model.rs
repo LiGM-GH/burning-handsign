@@ -1,5 +1,6 @@
 use std::{
-    error::Error, hash::{DefaultHasher, Hash, Hasher}, panic::catch_unwind
+    hash::{DefaultHasher, Hash, Hasher},
+    panic::catch_unwind,
 };
 
 use axum::{

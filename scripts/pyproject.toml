@@ -1,0 +1,21 @@
+[project]
+name = "burning-conversion"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12.6"
+dependencies = [
+    "keras>=3.10.0",
+    "keras2onnx>=1.7.0",
+    "msgpack>=1.1.1",
+    "onnxruntime>=1.22.0",
+    "pillow>=11.2.1",
+    "tensorflow>=2.19.0",
+    "tf2onnx>=1.14.0",
+    "torch>=2.7.1",
+    "torchvision>=0.22.1",
+]
+
+[tool.pyright]
+venv = ".venv"
+venvPath = "."

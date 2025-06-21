@@ -811,6 +811,7 @@ dependencies = [
  "derive-new 0.7.0",
  "log",
  "log4rs",
+ "serde",
  "tap",
  "tera",
  "tokio",

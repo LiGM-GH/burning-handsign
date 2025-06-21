@@ -9,3 +9,9 @@ TODO.md
 keys
 scripts/model.onnx
 scripts/out.whatever
+scripts/model.mpk
+scripts/model_state_dict.txt
+scripts/model_2.mpk
+scripts/model_1.mpk
+scripts/model3.onnx
+scripts/model2.onnx

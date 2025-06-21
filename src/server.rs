@@ -10,10 +10,12 @@ use tera::Context;
 
 use model::model;
 use guess::guess;
+use number::number;
 use std::net::SocketAddr;
 
 mod model;
 mod guess;
+mod number;
 
 #[tokio::main]
 pub async fn serve() {
@@ -23,6 +25,7 @@ pub async fn serve() {
         .route("/static/main.css", get(get_css))
         .route("/model", post(model))
         .route("/guess", post(guess))
+        .route("/number", post(number))
         .layer(DefaultBodyLimit::max(
             const {
                 1024 * 1024 * 50 // 50 MB
