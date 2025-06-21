@@ -2,6 +2,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
+use tap::Tap;
 use tokio::{fs::File, io::AsyncWriteExt, process::Command};
 
 pub async fn number(
@@ -197,9 +198,13 @@ pub async fn number(
             log::error!("Error while reading the file SIZEX: {:?}", err);
             StatusCode::INTERNAL_SERVER_ERROR
         })?
+        .tap(|image_width| {
+            dbg!(image_width);
+        })
+        .trim()
         .parse::<u32>()
         .map_err(|err| {
-            log::error!("Error while reading the file SIZEX: {:?}", err);
+            log::error!("Error while parsing the file SIZEX: {:?}", err);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
@@ -208,9 +213,13 @@ pub async fn number(
             log::error!("Error while reading the file SIZEY: {:?}", err);
             StatusCode::INTERNAL_SERVER_ERROR
         })?
+        .tap(|image_height| {
+            dbg!(image_height);
+        })
+        .trim()
         .parse::<u32>()
         .map_err(|err| {
-            log::error!("Error while reading the file SIZEY: {:?}", err);
+            log::error!("Error while parsing the file SIZEY: {:?}", err);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
